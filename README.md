@@ -11,11 +11,44 @@ Compiling
 Requires Python 2 and gcc installation.
 
 ```
-sudo pip install pillow
-sudo pip install pyglet
+pip install pillow
+pip install pyglet
+pip install scikit-image
+pip install keras
+pip install tensorflow
+pip install h5py
 git clone --recursive git@github.com:apuder/trs-dqn.git
 cd trs-dqn
 export LD_LIBRARY_PATH=`pwd`/lib
 make
-python main.py
 ```
+
+Running
+-------
+
+Let a human user play the game:
+
+```
+python main.py -m "Play"
+
+```
+
+Train the network:
+
+```
+python main.py -m "Train"
+
+```
+
+Play a game by using the trained network:
+
+```
+python main.py -m "Run"
+
+```
+
+
+Credits
+-------
+
+Based on <https://github.com/yanpanlau/Keras-FlappyBird>

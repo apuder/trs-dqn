@@ -43,8 +43,15 @@ class Z80():
         #                           self.z80_io_read_func,
         #                           self.z80_io_write_func)
 
-
+        wrapper.z80_reset.argtypes = (ctypes.c_ushort,)
         wrapper.z80_run.argtypes = (ctypes.c_ushort,)
+        wrapper.z80_run_for_tstates.argtypes = (ctypes.c_int,)
+
+    def reset(self, entry_addr):
+        wrapper.z80_reset(entry_addr)
+
+    def run_for_tstates(self, tstates):
+        wrapper.z80_run_for_tstates(tstates)
 
     def run(self, entry_addr):
         wrapper.z80_run(entry_addr)

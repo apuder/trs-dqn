@@ -21,6 +21,8 @@ static Z80_IO_WRITE_FUNC z80_io_write_func = NULL;
 
 static volatile int z80_is_running = 1;
 
+static Z80Context ctx;
+
 volatile byte ram[64 * 1024];
 
 static byte z80_mem_read(int param, ushort address)
@@ -44,7 +46,7 @@ static byte z80_io_read(int param, ushort address)
     if (z80_io_read_func != NULL) {
         return (*z80_io_read_func)(param, address);
     }
-    return 0;
+    return 255;
 }
 
 static void z80_io_write(int param, ushort address, byte data)
@@ -117,15 +119,19 @@ static void sync_time_with_host()
 	}
 }
 
-void z80_run(ushort entryAddr)
+void z80_reset(ushort entryAddr)
 {
-    Z80Context ctx;
     Z80RESET(&ctx);
     ctx.PC = entryAddr;
     ctx.memRead = z80_mem_read;
     ctx.memWrite = z80_mem_write;
     ctx.ioRead = z80_io_read;
     ctx.ioWrite = z80_io_write;
+}
+
+void z80_run(ushort entryAddr)
+{
+    z80_reset(entryAddr);
 
     unsigned int cycles_per_timer = CLOCK_MHZ_1 * 1000000 / TIMER_HZ_1;
 
@@ -141,6 +147,14 @@ void z80_run(ushort entryAddr)
 void z80_set_running(int is_running)
 {
     z80_is_running = is_running;
+}
+
+void z80_run_for_tstates(int tstates)
+{
+    ctx.tstates = 0;
+    while (ctx.tstates < tstates) {
+        Z80Execute(&ctx);
+    }
 }
 
 
