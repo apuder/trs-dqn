@@ -31,16 +31,16 @@ class RewardCosmicFighter():
             # Evil eye appears to be attacking
             return (-0.2, False)
         # Get score
-        i = 0
-        while b[i] != 0x20:
-            i += 1
-        j = i + 1
-        while b[j] != 0x20:
-            j += 1
         try:
+            i = 0
+            while b[i] != 0x20:
+                i += 1
+            j = i + 1
+            while b[j] != 0x20:
+                j += 1
             new_score = int(b[i:j])
-        except ValueError:
-            new_score = 0
+        except ValueError, IndexError:
+            new_score = self.score
 
         delta = new_score - self.score
         if delta != 0:
