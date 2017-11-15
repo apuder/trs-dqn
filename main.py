@@ -27,9 +27,6 @@ class RewardCosmicFighter():
         if b.count(b'\x5b') != 3:
             # Lost a ship. Game over
             return (-1.0, True)
-        if 0xbf in b:
-            # Evil eye appears to be attacking
-            return (-0.2, False)
         # Get score
         try:
             i = 0
@@ -39,7 +36,7 @@ class RewardCosmicFighter():
             while b[j] != 0x20:
                 j += 1
             new_score = int(b[i:j])
-        except ValueError, IndexError:
+        except (ValueError, IndexError):
             new_score = self.score
 
         delta = new_score - self.score
