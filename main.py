@@ -24,9 +24,6 @@ class RewardCosmicFighter():
                 # Evil eye appears to be attacking
                 #return (-0.2, False)
             return (0.1, False)
-        if b.count(b'\x5b') != 3:
-            # Lost a ship. Game over
-            return (-1.0, True)
         # Get score
         try:
             i = 0
@@ -37,7 +34,12 @@ class RewardCosmicFighter():
                 j += 1
             new_score = int(b[i:j])
         except (ValueError, IndexError):
-            new_score = self.score
+            # Score was not fully rendered yet
+            return (0.1, False)
+
+        if b.count(b'\x5b') == 2:
+            # Lost a ship. Game over
+            return (-1.0, True)
 
         delta = new_score - self.score
         if delta != 0:
