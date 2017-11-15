@@ -12,8 +12,9 @@ import types
 
 class TRS():
 
-    def __init__(self, config, fps):
+    def __init__(self, config, original_speed, fps):
         self.config = config
+        self.original_speed = original_speed
         self.ram = RAM()
         self.keyboard = Keyboard(self.ram)
         self.video = Video(self.ram, self.keyboard, fps)
@@ -32,7 +33,7 @@ class TRS():
         self.ram.restore()
 
     def run_for_tstates(self, tstates):
-        self.z80.run_for_tstates(tstates)
+        self.z80.run_for_tstates(tstates, self.original_speed)
 
     def boot(self):
         self.reset()

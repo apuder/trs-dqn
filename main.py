@@ -291,13 +291,18 @@ def main():
     parser = argparse.ArgumentParser(description='TRS DeepQ Network')
     parser.add_argument('-m', '--mode', help='Train/Run/Play', required=True)
     args = vars(parser.parse_args())
+    fps = 20.0
+    original_speed = 1
     if args["mode"] == "Play":
-        trs = TRS(config, 20.0)
+        trs = TRS(config, fps)
         trs.run()
-    else:
-        trs = TRS(config, 2.0)
-        trs.boot()
-        playGame(trs, args)
+        return
+    elif args["mode"] == "Train":
+        original_speed = 0
+        fps = 2.0
+    trs = TRS(config, original_speed, fps)
+    trs.boot()
+    playGame(trs, args)
 
 
 if __name__ == "__main__":

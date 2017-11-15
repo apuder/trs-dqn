@@ -8,6 +8,7 @@
 // Model I specs
 #define TIMER_HZ_1 40
 #define CLOCK_MHZ_1 1.77408
+#define CYCLES_PER_TIMER ((unsigned int) (CLOCK_MHZ_1 * 1000000 / TIMER_HZ_1))
 
 typedef byte (*Z80_MEM_READ_FUNC)(int, ushort);
 typedef void (*Z80_MEM_WRITE_FUNC)(int, ushort, byte);
@@ -133,13 +134,11 @@ void z80_run(ushort entryAddr)
 {
     z80_reset(entryAddr);
 
-    unsigned int cycles_per_timer = CLOCK_MHZ_1 * 1000000 / TIMER_HZ_1;
-
     while (z80_is_running) {
         Z80Execute(&ctx);
-        if (ctx.tstates >= cycles_per_timer) {
+        if (ctx.tstates >= CYCLES_PER_TIMER) {
 		    sync_time_with_host();
-		    ctx.tstates -=  cycles_per_timer;
+		    ctx.tstates -=  CYCLES_PER_TIMER;
 		}
     }
 }
@@ -149,11 +148,20 @@ void z80_set_running(int is_running)
     z80_is_running = is_running;
 }
 
-void z80_run_for_tstates(int tstates)
+void z80_run_for_tstates(int tstates, int original_speed)
 {
     ctx.tstates = 0;
-    while (ctx.tstates < tstates) {
+    int total_tstates = 0;
+    while (total_tstates < tstates) {
+        int last_tstates = ctx.tstates;
         Z80Execute(&ctx);
+        int current_tstates = ctx.tstates;
+        int delta = current_tstates - last_tstates;
+        total_tstates += delta;
+        if (original_speed && (ctx.tstates >= CYCLES_PER_TIMER)) {
+		    sync_time_with_host();
+		    ctx.tstates -=  CYCLES_PER_TIMER;
+		}
     }
 }
 
