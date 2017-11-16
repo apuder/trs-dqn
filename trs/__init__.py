@@ -1,6 +1,7 @@
 
 from z80 import Z80
 from video import Video
+from screenshot import Screenshot
 from keyboard import Keyboard
 from keyboard import Key
 from ram import RAM
@@ -12,18 +13,19 @@ import types
 
 class TRS():
 
-    def __init__(self, config, original_speed, fps):
+    def __init__(self, config, original_speed, fps, no_ui):
         self.config = config
         self.original_speed = original_speed
         self.ram = RAM()
         self.keyboard = Keyboard(self.ram)
-        self.video = Video(self.ram, self.keyboard, fps)
         self.z80 = Z80(self.ram)
         self.cmd = CMD(self.ram)
         self.entry_addr = self.cmd.load(config["cmd"])
         self.ram.backup()
         self.reset()
-        self.video.mainloop()
+        if not no_ui:
+            self.video = Video(self.ram, self.keyboard, fps)
+            self.video.mainloop()
 
     def cpu_thread(self):
         self.z80.run(self.entry_addr)

@@ -29,21 +29,21 @@ Running
 Let a human user play the game:
 
 ```
-python main.py -m "Play"
+python main.py -m Play
 
 ```
 
-Train the network:
+Train the network. The optional parameter `--no-ui` disables the UI during training:
 
 ```
-python main.py -m "Train"
+python main.py -m Train [--no-ui]
 
 ```
 
 Play a game by using the trained network:
 
 ```
-python main.py -m "Run"
+python main.py -m Run
 
 ```
 

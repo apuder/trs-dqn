@@ -102,15 +102,6 @@ class Video(pyglet.window.Window):
         pyglet.clock.schedule_interval(self.update, 1.0 / self.fps)
         pyglet.clock.set_fps_limit(self.fps)
 
-    def screenshot(self, x, y, w, h):
-        image = Image.new("RGB", (Video.char_width * w, Video.char_height * h), "black")
-        draw = ImageDraw.Draw(image)
-        for xx in range(w):
-            for yy in range(h):
-                ch = self.ram.peek(0x3c00 + Video.screen_width * (yy + y) + xx + x)
-                draw.text((xx * Video.char_width, yy * Video.char_height-1), unichr(0xe000 + ch), font=Video.trsTTF)
-        return numpy.array(image)
-
     def update(self, dt):
         pass
 

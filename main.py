@@ -3,6 +3,7 @@ from __future__ import print_function
 
 from trs import TRS
 from trs import Key
+from trs import Screenshot
 
 class RewardCosmicFighter():
 
@@ -71,11 +72,8 @@ class Game():
         self.reward = self.config["reward"](trs.ram)
         self.step = self.config["step"]
         self.actions = self.config["actions"]
-        (x, y, w, h) = self.config["viewport"]
-        self.viewport_x = x
-        self.viewport_y = y
-        self.viewport_w = w
-        self.viewport_h = h
+        viewport = self.config["viewport"]
+        self.screenshot = Screenshot(trs.ram, viewport)
 
     def frame_step(self, action):
         self.trs.keyboard.all_keys_up()
@@ -86,7 +84,7 @@ class Game():
                 self.trs.keyboard.key_down(key)
         self.trs.run_for_tstates(self.step)
         reward, terminal = self.reward.compute()
-        screenshot = self.trs.video.screenshot(self.viewport_x, self.viewport_y, self.viewport_w, self.viewport_h)
+        screenshot = self.screenshot.screenshot()
         if terminal:
             self.trs.boot()
         return (screenshot, reward, terminal)
@@ -289,17 +287,18 @@ def main():
     global config
     parser = argparse.ArgumentParser(description='TRS DeepQ Network')
     parser.add_argument('-m', '--mode', help='Train/Run/Play', required=True)
+    parser.add_argument('--no-ui', help='Do not show UI during training', action='store_true')
     args = vars(parser.parse_args())
     fps = 20.0
     original_speed = 1
     if args["mode"] == "Play":
-        trs = TRS(config, fps)
+        trs = TRS(config, fps, args["no_ui"])
         trs.run()
         return
     elif args["mode"] == "Train":
         original_speed = 0
         fps = 2.0
-    trs = TRS(config, original_speed, fps)
+    trs = TRS(config, original_speed, fps, args["no_ui"])
     trs.boot()
     playGame(trs, args)
 
