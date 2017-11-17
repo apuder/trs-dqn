@@ -1,6 +1,5 @@
 
 from z80 import Z80
-from video import Video
 from screenshot import Screenshot
 from keyboard import Keyboard
 from keyboard import Key
@@ -24,6 +23,7 @@ class TRS():
         self.ram.backup()
         self.reset()
         if not no_ui:
+            from video import Video
             self.video = Video(self.ram, self.keyboard, fps)
             self.video.mainloop()
 
