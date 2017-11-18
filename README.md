@@ -17,7 +17,7 @@ pip install scikit-image
 pip install keras
 pip install tensorflow
 pip install h5py
-git clone --recursive git@github.com:apuder/trs-dqn.git
+git clone --recursive https://github.com/apuder/trs-dqn.git
 cd trs-dqn
 export LD_LIBRARY_PATH=`pwd`/lib
 make
