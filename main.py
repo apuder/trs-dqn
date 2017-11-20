@@ -50,7 +50,7 @@ class RewardCosmicFighter():
                 # Killed an evil eye
                 return (1.0, False)
             else:
-                return (0.8, False)
+                return (0.9, False)
         return (0.1, False)
 
 config = {
@@ -59,7 +59,8 @@ config = {
     "boot": [1000000, Key.CLEAR, Key._1, 1000000, 1000000, 1678000],
     "viewport": (0, 2, 64, 14),
     "step": 70000,
-    "actions": [None, [Key.SPACE], [Key.LEFT], [Key.RIGHT], [Key.D]],
+    "actions": [None, [Key.SPACE], [Key.LEFT], [Key.LEFT, Key.SPACE],
+                [Key.RIGHT], [Key.RIGHT, Key.SPACE], [Key.D]],
     "reward": RewardCosmicFighter
 }
 
@@ -72,13 +73,19 @@ class Game():
         self.reward = self.config["reward"](trs.ram)
         self.step = self.config["step"]
         self.actions = self.config["actions"]
+        self.last_action = 0
         viewport = self.config["viewport"]
         self.screenshot = Screenshot(trs.ram, viewport)
 
     def frame_step(self, action):
         self.trs.keyboard.all_keys_up()
         i, = np.where(action == 1)
-        keys = self.actions[i[0]]
+        if len(i) == 0:
+            a = self.last_action
+        else:
+            a = i[0]
+            self.last_action = a
+        keys = self.actions[a]
         if keys != None:
             for key in keys:
                 self.trs.keyboard.key_down(key)
@@ -114,11 +121,11 @@ ACTIONS = len(config["actions"])  # number of valid actions
 GAMMA = 0.99  # decay rate of past observations
 OBSERVATION = 3200.  # timesteps to observe before training
 EXPLORE = 3000000.  # frames over which to anneal epsilon
-FINAL_EPSILON = 0.0001  # final value of epsilon
-INITIAL_EPSILON = 0.1  # starting value of epsilon
+FINAL_EPSILON = 0.1  # final value of epsilon
+INITIAL_EPSILON = 1  # starting value of epsilon
 REPLAY_MEMORY = 50000  # number of previous transitions to remember
 BATCH = 32  # size of minibatch
-FRAME_PER_ACTION = 1
+FRAME_PER_ACTION = 4
 LEARNING_RATE = 1e-4
 
 img_rows, img_cols = 80, 80
