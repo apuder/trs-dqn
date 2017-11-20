@@ -73,19 +73,13 @@ class Game():
         self.reward = self.config["reward"](trs.ram)
         self.step = self.config["step"]
         self.actions = self.config["actions"]
-        self.last_action = 0
         viewport = self.config["viewport"]
         self.screenshot = Screenshot(trs.ram, viewport)
 
     def frame_step(self, action):
         self.trs.keyboard.all_keys_up()
         i, = np.where(action == 1)
-        if len(i) == 0:
-            a = self.last_action
-        else:
-            a = i[0]
-            self.last_action = a
-        keys = self.actions[a]
+        keys = self.actions[i[0]]
         if keys != None:
             for key in keys:
                 self.trs.keyboard.key_down(key)
@@ -190,6 +184,7 @@ def trainNetwork(trs, model, args):
         epsilon = INITIAL_EPSILON
 
     t = 0
+    last_action = 0
     while (True):
         loss = 0
         Q_sa = 0
@@ -201,13 +196,14 @@ def trainNetwork(trs, model, args):
             if random.random() <= epsilon:
                 print("----------Random Action----------")
                 action_index = random.randrange(ACTIONS)
-                a_t[action_index] = 1
             else:
                 q = model.predict(s_t)  # input a stack of 4 images, get the prediction
                 max_Q = np.argmax(q)
                 action_index = max_Q
-                a_t[max_Q] = 1
-
+            last_action = action_index
+        else:
+            action_index = last_action
+        a_t[action_index] = 1
         # We reduced the epsilon gradually
         if epsilon > FINAL_EPSILON and t > OBSERVE:
             epsilon -= (INITIAL_EPSILON - FINAL_EPSILON) / EXPLORE
