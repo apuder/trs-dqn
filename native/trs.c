@@ -1,5 +1,5 @@
 
-#include <z80.h>
+#include <z80.c>
 #include <unistd.h>
 #include <time.h>
 #include <sys/time.h>

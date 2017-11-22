@@ -1,4 +1,4 @@
-lib
+*.so
 *.pyc
 *.iws
 **/.idea/workspace.xml

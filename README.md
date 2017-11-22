@@ -19,7 +19,7 @@ pip install tensorflow
 pip install h5py
 git clone --recursive https://github.com/apuder/trs-dqn.git
 cd trs-dqn
-export LD_LIBRARY_PATH=`pwd`/lib
+export LD_LIBRARY_PATH=`pwd`
 make
 ```
 
