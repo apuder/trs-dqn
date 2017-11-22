@@ -46,12 +46,13 @@ class Z80():
         wrapper.z80_reset.argtypes = (ctypes.c_ushort,)
         wrapper.z80_run.argtypes = (ctypes.c_ushort,)
         wrapper.z80_run_for_tstates.argtypes = (ctypes.c_int, ctypes.c_int)
+        wrapper.z80_run_for_tstates.restype = ctypes.c_int
 
     def reset(self, entry_addr):
         wrapper.z80_reset(entry_addr)
 
     def run_for_tstates(self, tstates, original_speed):
-        wrapper.z80_run_for_tstates(tstates, original_speed)
+        return wrapper.z80_run_for_tstates(tstates, original_speed)
 
     def run(self, entry_addr):
         wrapper.z80_run(entry_addr)

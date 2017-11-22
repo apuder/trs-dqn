@@ -35,7 +35,7 @@ class TRS():
         self.ram.restore()
 
     def run_for_tstates(self, tstates):
-        self.z80.run_for_tstates(tstates, self.original_speed)
+        return self.z80.run_for_tstates(tstates, self.original_speed)
 
     def boot(self):
         self.reset()

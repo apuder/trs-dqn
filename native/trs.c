@@ -148,21 +148,19 @@ void z80_set_running(int is_running)
     z80_is_running = is_running;
 }
 
-void z80_run_for_tstates(int tstates, int original_speed)
+int z80_run_for_tstates(int tstates, int original_speed)
 {
-    ctx.tstates = 0;
-    int total_tstates = 0;
-    while (total_tstates < tstates) {
-        int last_tstates = ctx.tstates;
-        Z80Execute(&ctx);
-        int current_tstates = ctx.tstates;
-        int delta = current_tstates - last_tstates;
-        total_tstates += delta;
-        if (original_speed && (ctx.tstates >= CYCLES_PER_TIMER)) {
-		    sync_time_with_host();
-		    ctx.tstates -=  CYCLES_PER_TIMER;
-		}
+    if (!original_speed) {
+        ctx.tstates = 0;
     }
+    int threshold_tstates = ctx.tstates + tstates;
+    while (ctx.tstates <= threshold_tstates) {
+        Z80Execute(&ctx);
+        if (original_speed && (ctx.tstates >= CYCLES_PER_TIMER)) {
+            sync_time_with_host();
+            ctx.tstates -=  CYCLES_PER_TIMER;
+            threshold_tstates -= CYCLES_PER_TIMER;
+        }
+    }
+    return ctx.tstates - threshold_tstates;
 }
-
-

@@ -75,6 +75,7 @@ class Game():
         self.actions = self.config["actions"]
         viewport = self.config["viewport"]
         self.screenshot = Screenshot(trs.ram, viewport)
+        self.delta_tstates = 0
 
     def frame_step(self, action):
         self.trs.keyboard.all_keys_up()
@@ -83,11 +84,13 @@ class Game():
         if keys != None:
             for key in keys:
                 self.trs.keyboard.key_down(key)
-        self.trs.run_for_tstates(self.step)
+        tstates = self.step - self.delta_tstates
+        self.delta_tstates = self.trs.run_for_tstates(tstates)
         reward, terminal = self.reward.compute()
         screenshot = self.screenshot.screenshot()
         if terminal:
             self.trs.boot()
+            self.delta_tstates = 0
         return (screenshot, reward, terminal)
 
 
@@ -173,7 +176,7 @@ def trainNetwork(trs, model, args):
 
     if args['mode'] == 'Run':
         OBSERVE = 999999999  # We keep observe, never train
-        epsilon = FINAL_EPSILON
+        epsilon = -1
         print("Now we load weight")
         model.load_weights(config["name"] + ".h5")
         adam = Adam(lr=LEARNING_RATE)
@@ -295,7 +298,7 @@ def main():
     fps = 20.0
     original_speed = 1
     if args["mode"] == "Play":
-        trs = TRS(config, fps, args["no_ui"])
+        trs = TRS(config, 1, fps, args["no_ui"])
         trs.run()
         return
     elif args["mode"] == "Train":
