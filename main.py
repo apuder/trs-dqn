@@ -108,6 +108,7 @@ from collections import deque
 
 import json
 from keras.models import Sequential
+from keras.models import clone_model
 from keras.layers.core import Dense, Activation, Flatten
 from keras.layers.convolutional import Conv2D
 from keras.optimizers import Adam
@@ -123,6 +124,7 @@ INITIAL_EPSILON = 1  # starting value of epsilon
 REPLAY_MEMORY = 1000000  # number of previous transitions to remember
 BATCH = 32  # size of minibatch
 FRAME_PER_ACTION = 1
+TARGET_MODEL_UPDATE = 10000
 LEARNING_RATE = 0.00025
 
 img_rows, img_cols = 80, 80
@@ -152,6 +154,9 @@ def buildmodel():
 
 
 def trainNetwork(trs, model, args):
+    # Target model
+    target_model = clone_model(model)
+    
     # open up a game state to communicate with emulator
     game_state = Game(trs)
 
@@ -246,8 +251,8 @@ def trainNetwork(trs, model, args):
 
                 inputs[i:i + 1] = state_t  # I saved down s_t
 
-                targets[i] = model.predict(state_t)  # Hitting each buttom probability
-                Q_sa = model.predict(state_t1)
+                targets[i] = target_model.predict(state_t)  # Hitting each buttom probability
+                Q_sa = target_model.predict(state_t1)
 
                 if terminal:
                     targets[i, action_t] = reward_t
@@ -260,12 +265,12 @@ def trainNetwork(trs, model, args):
         s_t = s_t1
         t = t + 1
 
-        # save progress every 10000 iterations
-        if t % 1000 == 0:
-            print("Now we save model")
+        # Save progress and update training model
+        if t % TARGET_MODEL_UPDATE == 0:
             model.save_weights(config["name"] + ".h5", overwrite=True)
             with open(config["name"] + ".json", "w") as outfile:
                 json.dump(model.to_json(), outfile)
+            target_model = clone_model(model)
 
         # print info
         state = ""
