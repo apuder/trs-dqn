@@ -192,32 +192,28 @@ def trainNetwork(trs, model, args):
         epsilon = INITIAL_EPSILON
 
     t = 0
-    last_action = 0
     while (True):
         loss = 0
         Q_sa = 0
         action_index = 0
         r_t = 0
-        a_t = np.zeros([ACTIONS])
         # choose an action epsilon greedy
-        if t % FRAME_PER_ACTION == 0:
-            if random.random() <= epsilon:
-                print("----------Random Action----------")
-                action_index = random.randrange(ACTIONS)
-            else:
-                q = model.predict(s_t)  # input a stack of 4 images, get the prediction
-                max_Q = np.argmax(q)
-                action_index = max_Q
-            last_action = action_index
+        if random.random() <= epsilon:
+            print("----------Random Action----------")
+            action_index = random.randrange(ACTIONS)
         else:
-            action_index = last_action
+            q = model.predict(s_t)  # input a stack of 4 images, get the prediction
+            max_Q = np.argmax(q)
+            action_index = max_Q
+        a_t = np.zeros([ACTIONS])
         a_t[action_index] = 1
+        # run the selected action and observed next state and reward
+        for i in range(FRAME_PER_ACTION):
+            x_t1_colored, r_t, terminal = game_state.frame_step(a_t)
+
         # We reduced the epsilon gradually
         if epsilon > FINAL_EPSILON and t > OBSERVE:
             epsilon -= (INITIAL_EPSILON - FINAL_EPSILON) / EXPLORE
-
-        # run the selected action and observed next state and reward
-        x_t1_colored, r_t, terminal = game_state.frame_step(a_t)
 
         x_t1 = skimage.color.rgb2gray(x_t1_colored)
         x_t1 = skimage.transform.resize(x_t1, (80, 80))
