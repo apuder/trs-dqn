@@ -134,7 +134,6 @@ img_channels = 4  # We stack 4 frames
 
 
 def buildmodel():
-    print("Now we build the model")
     model = Sequential()
     model.add(Conv2D(32, (8, 8), strides=(4, 4), padding='same',
                             input_shape=(img_rows, img_cols, img_channels)))  # 80*80*4
@@ -150,7 +149,6 @@ def buildmodel():
 
     adam = Adam(lr=LEARNING_RATE)
     model.compile(loss='mse', optimizer=adam)
-    print("We finish building the model")
     return model
 
 
@@ -169,13 +167,11 @@ def trainNetwork(trs, model, args):
     do_nothing[0] = 1
     x_t, r_0, terminal = game_state.frame_step(do_nothing)
 
-    print(x_t.shape)
     x_t = skimage.color.rgb2gray(x_t)
     x_t = skimage.transform.resize(x_t, (80, 80))
     x_t = skimage.exposure.rescale_intensity(x_t, out_range=(0, 255))
 
     s_t = np.stack((x_t, x_t, x_t, x_t), axis=2)
-    print (s_t.shape)
 
     # In Keras, need to reshape
     s_t = s_t.reshape(1, s_t.shape[0], s_t.shape[1], s_t.shape[2])  # 1*80*80*4
@@ -243,7 +239,6 @@ def trainNetwork(trs, model, args):
             minibatch = random.sample(D, BATCH)
 
             inputs = np.zeros((BATCH, s_t.shape[1], s_t.shape[2], s_t.shape[3]))  # 32, 80, 80, 4
-            #print(inputs.shape)
             targets = np.zeros((inputs.shape[0], ACTIONS))  # 32, 2
 
             # Now we do the experience replay
@@ -284,8 +279,6 @@ def trainNetwork(trs, model, args):
         state = ""
         if t <= OBSERVE:
             state = "observe"
-        elif t > OBSERVE and t <= OBSERVE + EXPLORE:
-            state = "explore"
         else:
             state = "train"
 
