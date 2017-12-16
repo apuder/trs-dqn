@@ -107,6 +107,7 @@ import numpy as np
 from collections import deque
 
 import json
+import os.path
 from keras.models import Sequential
 from keras.models import clone_model
 from keras.layers.core import Dense, Activation, Flatten
@@ -179,19 +180,28 @@ def trainNetwork(trs, model, args):
     # In Keras, need to reshape
     s_t = s_t.reshape(1, s_t.shape[0], s_t.shape[1], s_t.shape[2])  # 1*80*80*4
 
+    t = 0
+    OBSERVE = OBSERVATION
+    epsilon = INITIAL_EPSILON
+
+    # Try to load previous model
+    name = config["name"]
+    modelName = name + ".h5"
+    if os.path.isfile(modelName):
+        model.load_weights(modelName)
+    metaName = name + ".json"
+    if os.path.isfile(metaName):
+        with open(metaName, "r") as infile:
+            meta = json.load(infile)
+            t = meta["timestep"]
+            # After loading previous model first do some observation again
+            OBSERVE = t + OBSERVATION
+            epsilon = meta["epsilon"]
+        
     if args['mode'] == 'Run':
         OBSERVE = 999999999  # We keep observe, never train
         epsilon = -1
-        print("Now we load weight")
-        model.load_weights(config["name"] + ".h5")
-        adam = Adam(lr=LEARNING_RATE)
-        model.compile(loss='mse', optimizer=adam)
-        print("Weight load successfully")
-    else:  # We go to training mode
-        OBSERVE = OBSERVATION
-        epsilon = INITIAL_EPSILON
 
-    t = 0
     while (True):
         loss = 0
         Q_sa = 0
@@ -263,9 +273,11 @@ def trainNetwork(trs, model, args):
 
         # Save progress and update training model
         if t % TARGET_MODEL_UPDATE == 0:
-            model.save_weights(config["name"] + ".h5", overwrite=True)
-            with open(config["name"] + ".json", "w") as outfile:
-                json.dump(model.to_json(), outfile)
+            name = config["name"]
+            model.save_weights(name + ".h5", overwrite=True)
+            meta = {"timestep": t, "epsilon": epsilon}
+            with open(name + ".json", "w") as outfile:
+                json.dump(meta, outfile)
             target_model = clone_model(model)
 
         # print info
