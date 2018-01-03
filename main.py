@@ -112,7 +112,7 @@ from keras.models import Sequential
 from keras.models import clone_model
 from keras.layers.core import Dense, Activation, Flatten
 from keras.layers.convolutional import Conv2D
-from keras.optimizers import Adam
+from keras.optimizers import RMSprop
 import tensorflow as tf
 
 CONFIG = 'nothreshold'
@@ -122,7 +122,7 @@ OBSERVATION = 50000.  # timesteps to observe before training
 EXPLORE = 1000000.  # frames over which to anneal epsilon
 FINAL_EPSILON = 0.1  # final value of epsilon
 INITIAL_EPSILON = 1  # starting value of epsilon
-REPLAY_MEMORY = 1000000  # number of previous transitions to remember
+REPLAY_MEMORY = 60000  # number of previous transitions to remember
 BATCH = 32  # size of minibatch
 FRAME_PER_ACTION = 1
 TARGET_MODEL_UPDATE = 10000
@@ -147,8 +147,8 @@ def buildmodel():
     model.add(Activation('relu'))
     model.add(Dense(ACTIONS))
 
-    adam = Adam(lr=LEARNING_RATE)
-    model.compile(loss='mse', optimizer=adam)
+    optimizer = RMSprop(lr=LEARNING_RATE)
+    model.compile(loss='mse', optimizer=optimizer)
     return model
 
 
