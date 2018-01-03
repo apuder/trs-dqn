@@ -24,7 +24,7 @@ class RewardCosmicFighter():
             #if 0xbf in b:
                 # Evil eye appears to be attacking
                 #return (-0.2, False)
-            return (0.1, False)
+            return (0.0, False)
         # Get score
         try:
             i = 0
@@ -36,7 +36,7 @@ class RewardCosmicFighter():
             new_score = int(b[i:j])
         except (ValueError, IndexError):
             # Score was not fully rendered yet
-            return (0.1, False)
+            return (0.0, False)
 
         if b.count(b'\x5b') == 2:
             # Lost a ship. Game over
@@ -50,8 +50,8 @@ class RewardCosmicFighter():
                 # Killed an evil eye
                 return (1.0, False)
             else:
-                return (0.9, False)
-        return (0.1, False)
+                return (1.0, False)
+        return (0.0, False)
 
 config = {
     "name": "cosmic",
