@@ -15,6 +15,8 @@ class TRS():
     def __init__(self, config, original_speed, fps, no_ui):
         self.config = config
         self.original_speed = original_speed
+        self.fps = fps
+        self.no_ui = no_ui
         self.ram = RAM()
         self.keyboard = Keyboard(self.ram)
         self.z80 = Z80(self.ram)
@@ -22,10 +24,6 @@ class TRS():
         self.entry_addr = self.cmd.load(config["cmd"])
         self.ram.backup()
         self.reset()
-        if not no_ui:
-            from video import Video
-            self.video = Video(self.ram, self.keyboard, fps)
-            self.video.mainloop()
 
     def cpu_thread(self):
         self.z80.run(self.entry_addr)
@@ -50,7 +48,12 @@ class TRS():
                 print "Bad boot action:", action
         self.keyboard.all_keys_up()
 
-    def run(self):
-        self.cpu_thread()
+    def mainloop(self):
+        if not self.no_ui:
+            from video import Video
+            self.video = Video(self.ram, self.keyboard, self.fps)
+            self.video.mainloop()
+
+    def run_cpu(self):
         self.cpuThread = Thread(target = self.cpu_thread)
         self.cpuThread.start()

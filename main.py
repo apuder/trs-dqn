@@ -106,6 +106,8 @@ import random
 import numpy as np
 from collections import deque
 
+from threading import Thread
+
 import json
 import os.path
 from keras.models import Sequential
@@ -290,11 +292,6 @@ def trainNetwork(trs, model, args):
     print("************************")
 
 
-def playGame(trs, args):
-    model = buildmodel()
-    trainNetwork(trs, model, args)
-
-
 def main():
     global config
     parser = argparse.ArgumentParser(description='TRS DeepQ Network')
@@ -305,21 +302,28 @@ def main():
     original_speed = 1
     if args["mode"] == "Play":
         trs = TRS(config, 1, fps, args["no_ui"])
-        trs.run()
+        trs.run_cpu()
+        trs.mainloop()
         return
     elif args["mode"] == "Train":
         original_speed = 0
         fps = 2.0
     trs = TRS(config, original_speed, fps, args["no_ui"])
     trs.boot()
-    playGame(trs, args)
+
+    def training_thread():
+        conf = tf.ConfigProto()
+        conf.gpu_options.allow_growth = True
+        sess = tf.Session(config=conf)
+        from keras import backend as K
+        K.set_session(sess)
+        model = buildmodel()
+        trainNetwork(trs, model, args)
+
+    thread = Thread(target=training_thread)
+    thread.start()
+    trs.mainloop()
 
 
 if __name__ == "__main__":
-    conf = tf.ConfigProto()
-    conf.gpu_options.allow_growth = True
-    sess = tf.Session(config=conf)
-    from keras import backend as K
-
-    K.set_session(sess)
     main()

@@ -3,7 +3,6 @@ import pyglet, numpy
 from PIL import ImageFont, ImageDraw, Image
 from keyboard import Key
 from pyglet.window import key
-from threading import Thread
 
 
 pyglet_keymap = {
@@ -133,5 +132,4 @@ class Video(pyglet.window.Window):
         self.keyboard.key_up(pyglet_keymap[symbol])
 
     def mainloop(self):
-        self.renderThread = Thread(target = pyglet.app.run)
-        self.renderThread.start()
+        pyglet.app.run()
