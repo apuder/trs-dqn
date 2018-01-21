@@ -108,6 +108,8 @@ from collections import deque
 
 from threading import Thread
 
+import sqlite3, pickle
+
 import json
 import os.path
 from keras.models import Sequential
@@ -124,7 +126,7 @@ OBSERVATION = 50000.  # timesteps to observe before training
 EXPLORE = 1000000.  # frames over which to anneal epsilon
 FINAL_EPSILON = 0.1  # final value of epsilon
 INITIAL_EPSILON = 1  # starting value of epsilon
-REPLAY_MEMORY = 60000  # number of previous transitions to remember
+REPLAY_MEMORY = 1000000  # number of previous transitions to remember
 BATCH = 32  # size of minibatch
 FRAME_PER_ACTION = 1
 TARGET_MODEL_UPDATE = 10000
@@ -137,7 +139,7 @@ img_channels = 4  # We stack 4 frames
 
 class ReplayMemory():
 
-    def __init__(self, size):
+    def __init__(self, name, size):
         self.size = size
         self.D = deque()
 
@@ -149,6 +151,48 @@ class ReplayMemory():
     def get_mini_batch(self, batch_size):
         return random.sample(self.D, batch_size)
 
+
+class PersistentReplayMemory():
+
+    def __init__(self, name, size):
+        self.size = size
+        self.conn = sqlite3.connect(name + '.db')
+        self.cursor = self.conn.cursor()
+        self.cursor.execute("create table if not exists replay_mem(id integer primary key, transition blob)")
+        row = self.cursor.execute("select min(id) from replay_mem").fetchone()[0]
+        self.tail = 0 if row is None else row
+        row = self.cursor.execute("select max(id) from replay_mem").fetchone()[0]
+        self.head = 0 if row is None else row + 1
+
+    def add_transition(self, transition):
+        id = self.head
+        self.head += 1
+        self.cursor.execute("insert into replay_mem(id, transition) values (?, ?)", (id, sqlite3.Binary(pickle.dumps(transition, protocol=2))))
+        if self.head - self.tail > self.size:
+            id = self.tail
+            self.cursor.execute("delete from replay_mem where id=?", (id,))
+            self.tail += 1
+        self.conn.commit()
+
+    def get_mini_batch(self, batch_size):
+        n = self.head - self.tail
+        if not 0 <= batch_size <= n:
+            raise ValueError, "sample larger than population"
+        result = [None] * batch_size
+        selected = set()
+        for i in xrange(batch_size):
+            j = random.randrange(n)
+            while j in selected:
+                j = random.randrange(n)
+            selected.add(j)
+            result[i] = self.get_transition(j)
+        return result
+
+    def get_transition(self, i):
+        id = self.tail + i
+        row = self.cursor.execute("select transition from replay_mem where id = ?", (id,)).fetchone()
+        blob = row[0]
+        return pickle.loads(str(blob))
 
 
 def buildmodel():
@@ -178,7 +222,8 @@ def trainNetwork(trs, model, args):
     game_state = Game(trs)
 
     # store the previous observations in replay memory
-    D = ReplayMemory(REPLAY_MEMORY)
+    name = config["name"]
+    D = PersistentReplayMemory(name, REPLAY_MEMORY)
 
     # get the first state by doing nothing and preprocess the image to 80x80x4
     do_nothing = np.zeros(ACTIONS)
@@ -199,7 +244,6 @@ def trainNetwork(trs, model, args):
     epsilon = INITIAL_EPSILON
 
     # Try to load previous model
-    name = config["name"]
     modelName = name + ".h5"
     if os.path.isfile(modelName):
         model.load_weights(modelName)
@@ -207,9 +251,7 @@ def trainNetwork(trs, model, args):
     if os.path.isfile(metaName):
         with open(metaName, "r") as infile:
             meta = json.load(infile)
-            t = meta["timestep"]
-            # After loading previous model first do some observation again
-            OBSERVE = t + OBSERVATION
+            OBSERVE = meta["timestep"]
             epsilon = meta["epsilon"]
         
     if args['mode'] == 'Run':
