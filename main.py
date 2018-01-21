@@ -135,6 +135,22 @@ img_rows, img_cols = 80, 80
 img_channels = 4  # We stack 4 frames
 
 
+class ReplayMemory():
+
+    def __init__(self, size):
+        self.size = size
+        self.D = deque()
+
+    def add_transition(self, transition):
+        self.D.append(transition)
+        if len(self.D) > self.size:
+            self.D.popleft()
+
+    def get_mini_batch(self, batch_size):
+        return random.sample(self.D, batch_size)
+
+
+
 def buildmodel():
     model = Sequential()
     model.add(Conv2D(32, (8, 8), strides=(4, 4), padding='same',
@@ -162,7 +178,7 @@ def trainNetwork(trs, model, args):
     game_state = Game(trs)
 
     # store the previous observations in replay memory
-    D = deque()
+    D = ReplayMemory(REPLAY_MEMORY)
 
     # get the first state by doing nothing and preprocess the image to 80x80x4
     do_nothing = np.zeros(ACTIONS)
@@ -231,14 +247,12 @@ def trainNetwork(trs, model, args):
         s_t1 = np.append(x_t1, s_t[:, :, :, :3], axis=3)
 
         # store the transition in D
-        D.append((s_t, action_index, r_t, s_t1, terminal))
-        if len(D) > REPLAY_MEMORY:
-            D.popleft()
+        D.add_transition((s_t, action_index, r_t, s_t1, terminal))
 
         # only train if done observing
         if t > OBSERVE:
             # sample a minibatch to train on
-            minibatch = random.sample(D, BATCH)
+            minibatch = D.get_mini_batch(BATCH)
 
             inputs = np.zeros((BATCH, s_t.shape[1], s_t.shape[2], s_t.shape[3]))  # 32, 80, 80, 4
             targets = np.zeros((inputs.shape[0], ACTIONS))  # 32, 2
