@@ -118,7 +118,7 @@ from keras.models import Sequential
 from keras.models import clone_model
 from keras.layers.core import Dense, Activation, Flatten
 from keras.layers.convolutional import Conv2D
-from keras.optimizers import RMSprop
+from keras.optimizers import Adam
 import tensorflow as tf
 
 CONFIG = 'nothreshold'
@@ -132,7 +132,7 @@ REPLAY_MEMORY = 1000000  # number of previous transitions to remember
 BATCH = 32  # size of minibatch
 FRAME_PER_ACTION = 1
 TARGET_MODEL_UPDATE = 10000
-LEARNING_RATE = 0.00025
+LEARNING_RATE = 0.0001
 
 img_rows, img_cols = 80, 80
 # Convert image into Black and white
@@ -211,7 +211,7 @@ def buildmodel():
     model.add(Activation('relu'))
     model.add(Dense(ACTIONS))
 
-    optimizer = RMSprop(lr=LEARNING_RATE)
+    optimizer = Adam(lr=LEARNING_RATE)
     model.compile(loss='mse', optimizer=optimizer)
     return model
 
