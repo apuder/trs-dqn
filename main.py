@@ -60,7 +60,9 @@ config = {
     "viewport": (0, 2, 64, 14),
     "step": 70000,
     "actions": [None, [Key.SPACE], [Key.LEFT], [Key.LEFT, Key.SPACE],
-                [Key.RIGHT], [Key.RIGHT, Key.SPACE], [Key.D]],
+                [Key.RIGHT], [Key.RIGHT, Key.SPACE]
+                #, [Key.D]
+                ],
     "reward": RewardCosmicFighter
 }
 
