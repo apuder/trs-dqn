@@ -60,7 +60,7 @@ config = {
     "cmd": "var/cosmic.cmd",
     "boot": [1000000, Key.CLEAR, Key._1, 1000000, 1000000, 1678000],
     "viewport": (0, 2, 64, 14),
-    "step": 70000,
+    "step": 50000,
     "actions": [None, [Key.SPACE], [Key.LEFT], [Key.LEFT, Key.SPACE],
                 [Key.RIGHT], [Key.RIGHT, Key.SPACE]
                 #, [Key.D]
