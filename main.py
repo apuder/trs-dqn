@@ -7,6 +7,8 @@ from trs import Screenshot
 
 class RewardCosmicFighter():
 
+    default_reward = (-0.2, False)
+
     def __init__(self, ram):
         self.ram = ram
         self.score = 0
@@ -24,7 +26,7 @@ class RewardCosmicFighter():
             #if 0xbf in b:
                 # Evil eye appears to be attacking
                 #return (-0.2, False)
-            return (0.0, False)
+            return RewardCosmicFighter.default_reward
         # Get score
         try:
             i = 0
@@ -36,7 +38,7 @@ class RewardCosmicFighter():
             new_score = int(b[i:j])
         except (ValueError, IndexError):
             # Score was not fully rendered yet
-            return (0.0, False)
+            return RewardCosmicFighter.default_reward
 
         if b.count(b'\x5b') == 2:
             # Lost a ship. Game over
@@ -51,7 +53,7 @@ class RewardCosmicFighter():
                 return (1.0, False)
             else:
                 return (1.0, False)
-        return (0.0, False)
+        return RewardCosmicFighter.default_reward
 
 config = {
     "name": "cosmic",
