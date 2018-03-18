@@ -55,7 +55,7 @@ class RewardCosmicFighter():
                 return (1.0, False)
         return RewardCosmicFighter.default_reward
 
-config = {
+config_cosmic = {
     "name": "cosmic",
     "cmd": "var/cosmic.cmd",
     "boot": [1000000, Key.CLEAR, Key._1, 1000000, 1000000, 1678000],
@@ -67,6 +67,52 @@ config = {
                 ],
     "reward": RewardCosmicFighter
 }
+
+
+class RewardBreakdown():
+
+    default_reward = (0.0, False)
+
+    def __init__(self, ram):
+        self.ram = ram
+        self.score = 0
+
+    def reset(self):
+        self.score = 0
+
+    def compute(self):
+        b = bytearray()
+        for i in range(5):
+            b.append(self.ram.peek(0x3c00 + 6 + i))
+
+        # Get score
+        try:
+            new_score = int(b[:])
+        except (ValueError, IndexError):
+            # Score was not fully rendered yet
+            return RewardBreakdown.default_reward
+
+        if self.ram.peek(0x3c00 + 668) == 80:
+            return (-1.0, True)
+
+        delta = new_score - self.score
+        if delta != 0:
+            # Score increased
+            self.score = new_score
+            return (1.0, False)
+        return RewardBreakdown.default_reward
+
+config = {
+    "name": "breakdown",
+    "cmd": "var/breakdown.cmd",
+    "boot": [1000000, 1000000, 1000000, Key.SPACE, 1000000, 1000000, 1000000, 1000000, 1000000,
+             1000000, 800000],
+    "viewport": (0, 2, 64, 14),
+    "step": 50000,
+    "actions": [None, [Key.LEFT], [Key.RIGHT]],
+    "reward": RewardBreakdown
+}
+
 
 
 class Game():
@@ -93,6 +139,7 @@ class Game():
         reward, terminal = self.reward.compute()
         screenshot = self.screenshot.screenshot()
         if terminal:
+            self.reward.reset()
             self.trs.boot()
             self.delta_tstates = 0
         return (screenshot, reward, terminal)
@@ -352,12 +399,35 @@ def trainNetwork(trs, model, args):
     print("************************")
 
 
+def single_step():
+    global config
+    import sys
+    trs = TRS(config, False, 20, False)
+    #trs.boot()
+    #trs.boot()
+    #trs.boot()
+    #trs.boot()
+    def step_thread():
+        trs.boot()
+        game_state = Game(trs)
+        while True:
+            left_shoot = np.zeros(ACTIONS)
+            left_shoot[0] = 1
+            (screenshot, reward, terminal) = game_state.frame_step(left_shoot)
+            print (reward, terminal)
+            sys.stdin.readline()
+    thread = Thread(target=step_thread)
+    thread.start()
+    trs.mainloop()
+    
 def main():
     global config
     parser = argparse.ArgumentParser(description='TRS DeepQ Network')
     parser.add_argument('-m', '--mode', help='Train/Run/Play', required=True)
     parser.add_argument('--no-ui', help='Do not show UI during training', action='store_true')
     args = vars(parser.parse_args())
+    #single_step()
+    #return
     fps = 20.0
     original_speed = 1
     if args["mode"] == "Play":
