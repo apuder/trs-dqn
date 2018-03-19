@@ -122,6 +122,7 @@ static void sync_time_with_host()
 
 void z80_reset(ushort entryAddr)
 {
+    bzero(&ctx, sizeof(Z80Context));
     Z80RESET(&ctx);
     ctx.PC = entryAddr;
     ctx.memRead = z80_mem_read;
