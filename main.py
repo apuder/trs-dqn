@@ -347,30 +347,14 @@ def trainNetwork(trs, model, args):
             # sample a minibatch to train on
             minibatch = D.get_mini_batch(BATCH)
 
-            inputs = np.zeros((BATCH, s_t.shape[1], s_t.shape[2], s_t.shape[3]))  # 32, 80, 80, 4
-            targets = np.zeros((inputs.shape[0], ACTIONS))  # 32, 2
-
             # Now we do the experience replay
-            for i in range(0, len(minibatch)):
-                state_t = minibatch[i][0]
-                action_t = minibatch[i][1]  # This is action index
-                reward_t = minibatch[i][2]
-                state_t1 = minibatch[i][3]
-                terminal = minibatch[i][4]
-                # if terminated, only equals reward
-
-                inputs[i:i + 1] = state_t  # I saved down s_t
-
-                targets[i] = target_model.predict(state_t)  # Hitting each buttom probability
-                Q_sa = target_model.predict(state_t1)
-
-                if terminal:
-                    targets[i, action_t] = reward_t
-                else:
-                    targets[i, action_t] = reward_t + GAMMA * np.max(Q_sa)
-
-            # targets2 = normalize(targets)
-            loss += model.train_on_batch(inputs, targets)
+            state_t, action_t, reward_t, state_t1, terminal = zip(*minibatch)
+            state_t = np.concatenate(state_t)
+            state_t1 = np.concatenate(state_t1)
+            targets = target_model_model.predict(state_t)
+            Q_sa = target_model.predict(state_t1)
+            targets[range(BATCH), action_t] = reward_t + GAMMA * np.max(Q_sa, axis=1) * np.invert(terminal)
+            loss += model.train_on_batch(state_t, targets)
 
         s_t = s_t1
         t = t + 1
