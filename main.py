@@ -351,7 +351,7 @@ def trainNetwork(trs, model, args):
             state_t, action_t, reward_t, state_t1, terminal = zip(*minibatch)
             state_t = np.concatenate(state_t)
             state_t1 = np.concatenate(state_t1)
-            targets = target_model_model.predict(state_t)
+            targets = target_model.predict(state_t)
             Q_sa = target_model.predict(state_t1)
             targets[range(BATCH), action_t] = reward_t + GAMMA * np.max(Q_sa, axis=1) * np.invert(terminal)
             loss += model.train_on_batch(state_t, targets)
