@@ -10,6 +10,9 @@ Compiling
 
 Requires Python 2 and gcc installation.
 
+Make sure you have a development version of freeglut installed
+E.g.: `sudo apt install freeglut3-dev`.
+
 ```
 pip install pillow
 pip install pyglet
