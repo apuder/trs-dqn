@@ -1,7 +1,7 @@
 
 import pyglet, numpy
 from PIL import ImageFont, ImageDraw, Image
-from keyboard import Key
+from .keyboard import Key
 from pyglet.window import key
 
 
@@ -78,7 +78,7 @@ class Video(pyglet.window.Window):
         for i in range(256):
             image = Image.new("RGB", (Video.char_width, Video.char_height), "black")
             draw = ImageDraw.Draw(image)
-            draw.text((0, -1), unichr(0xe000 + i), font=Video.trsTTF)
+            draw.text((0, -1), chr(0xe000 + i), font=Video.trsTTF)
             image = image.transpose(Image.FLIP_TOP_BOTTOM)
             raw_image = image.tobytes(encoder_name="raw")
             pygimage = pyglet.image.ImageData(Video.char_width, Video.char_height, 'RGB', raw_image)
@@ -90,7 +90,7 @@ class Video(pyglet.window.Window):
 
         for i in range(Video.screen_width * Video.screen_height):
             x = i % Video.screen_width
-            y = i / Video.screen_width
+            y = int(i / Video.screen_width)
             x *= Video.char_width
             y *= Video.char_height
             y = height - y
@@ -99,7 +99,7 @@ class Video(pyglet.window.Window):
             self.sprites.append(sprite)
 
         pyglet.clock.schedule_interval(self.update, 1.0 / self.fps)
-        pyglet.clock.set_fps_limit(self.fps)
+        #pyglet.clock.set_fps_limit(self.fps)
 
     def update(self, dt):
         pass

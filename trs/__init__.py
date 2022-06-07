@@ -1,10 +1,10 @@
 
-from z80 import Z80
-from screenshot import Screenshot
-from keyboard import Keyboard
-from keyboard import Key
-from ram import RAM
-from cmd import CMD
+from .z80 import Z80
+from .screenshot import Screenshot
+from .keyboard import Keyboard
+from .keyboard import Key
+from .ram import RAM
+from .cmd import CMD
 
 from threading import Thread
 import types
@@ -45,12 +45,12 @@ class TRS():
             elif type(action) is Key:
                 self.keyboard.key_down(action)
             else:
-                print "Bad boot action:", action
+                print("Bad boot action:", action)
         self.keyboard.all_keys_up()
 
     def mainloop(self):
         if not self.no_ui:
-            from video import Video
+            from .video import Video
             self.video = Video(self.ram, self.keyboard, self.fps)
             self.video.mainloop()
 

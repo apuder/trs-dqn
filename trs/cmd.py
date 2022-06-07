@@ -16,7 +16,7 @@ class CMD():
     def load(self, cmd_file):
         self.cmd = array('B')
         statinfo = os.stat(cmd_file)
-        f = open(cmd_file, 'r')
+        f = open(cmd_file, 'rb')
         self.cmd.fromfile(f, statinfo.st_size)
         self.i = 0
         while True:

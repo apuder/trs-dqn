@@ -23,7 +23,7 @@ class RAM():
 
     def peek(self, addr):
         if addr > RAM.ram_size:
-            print 'abort'
+            print('abort')
         return self.ram[addr]
 
     def poke(self, addr, val):

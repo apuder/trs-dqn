@@ -228,7 +228,7 @@ class PersistentReplayMemory():
     def get_mini_batch(self, batch_size):
         n = self.head - self.tail
         if not 0 <= batch_size <= n:
-            raise ValueError, "sample larger than population"
+            raise ValueError("sample larger than population")
         result = [None] * batch_size
         selected = set()
         for i in xrange(batch_size):
