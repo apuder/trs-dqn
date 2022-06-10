@@ -23,6 +23,6 @@ class Screenshot():
         for x in range(self.viewport_w):
             for y in range(self.viewport_h):
                 ch = self.ram.peek(0x3c00 + Screenshot.screen_width * (y + self.viewport_y) + x + self.viewport_x)
-                draw.text((x * Screenshot.char_width, y * Screenshot.char_height-1), unichr(0xe000 + ch),
+                draw.text((x * Screenshot.char_width, y * Screenshot.char_height-1), chr(0xe000 + ch),
                           font=Screenshot.trsTTF)
         return numpy.array(image)

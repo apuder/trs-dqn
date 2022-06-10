@@ -411,11 +411,12 @@ def single_step():
 def main():
     global config
     parser = argparse.ArgumentParser(description='TRS DeepQ Network')
-    parser.add_argument('-m', '--mode', help='Train/Run/Play', required=True)
+    parser.add_argument('-m', '--mode', help='Train/Run/Play/Single', required=True)
     parser.add_argument('--no-ui', help='Do not show UI during training', action='store_true')
     args = vars(parser.parse_args())
-    #single_step()
-    #return
+    if args["mode"] == "Single":
+        single_step()
+        return
     fps = 20.0
     original_speed = 1
     if args["mode"] == "Play":

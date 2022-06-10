@@ -40,7 +40,7 @@ class TRS():
         self.ram.restore()
         self.keyboard.all_keys_up()
         for action in self.config["boot"]:
-            if type(action) is types.IntType:
+            if type(action) is int:
                 self.run_for_tstates(action)
             elif type(action) is Key:
                 self.keyboard.key_down(action)
