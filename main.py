@@ -96,8 +96,8 @@ class RewardBreakdown():
             # Score was not fully rendered yet
             return RewardBreakdown.default_reward
 
-#        if self.ram.peek(0x3c00 + 668) == 80:
-#            return (-1.0, True)
+        if self.ram.peek(0x3c00 + 668) == 80:
+            return (0.0, True)
 
         delta = new_score - self.score
         if delta != 0:
