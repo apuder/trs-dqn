@@ -8,6 +8,7 @@ from trs import Screenshot
 import argparse
 import skimage as skimage
 from skimage import transform, color, exposure
+from threading import Thread
 
 class RewardCosmicFighter():
 
@@ -163,14 +164,9 @@ class Game():
             self.trs.boot()
             self.reset()
         else:
-            x_t1 = skimage.color.rgb2gray(screenshot)
-            x_t1 = skimage.transform.resize(x_t1, (84, 84))
-            x_t1 = skimage.exposure.rescale_intensity(x_t1, out_range=(0, 255))
-
-            x_t1 = x_t1 / 255.0
-        
-            x_t1 = x_t1.reshape(x_t1.shape[0], x_t1.shape[1], 1)  # 80x80x1
-            #x_t1 = np.asarray(x_t1).astype('float32')
+            x_t1 = skimage.transform.resize(screenshot, (84, 84))
+            x_t1 = x_t1[:, :, 0]
+            x_t1 = x_t1.reshape(x_t1.shape[0], x_t1.shape[1], 1)  # 84x84x1
             self.state = np.append(x_t1, self.state[:, :, :3], axis=2)
 
         return self.state, reward, terminal, None
@@ -408,6 +404,27 @@ def train_network(env):
 #--------------------------------------------------------------------------------------------
 #--------------------------------------------------------------------------------------------
 
+import os
+
+def run(modelName, env):
+    if not os.path.isfile(modelName):
+        print('Model ' + modelName + ' not found!')
+        return
+    model = create_q_model()
+    model.load_weights(modelName)
+
+    while True:
+        state = np.array(env.reset())
+        while True:
+            state_tensor = tf.convert_to_tensor(state)
+            state_tensor = tf.expand_dims(state_tensor, 0)
+            action_probs = model(state_tensor, training=False)
+            # Take best action
+            action = tf.argmax(action_probs[0]).numpy()
+            state, reward, done, _ = env.step(action)
+            state = np.array(state)
+
+
 def single_step():
     global config
     import sys
@@ -433,6 +450,7 @@ def main():
     global config
     parser = argparse.ArgumentParser(description='TRS DeepQ Network')
     parser.add_argument('-m', '--mode', help='Train/Run/Play/Single', required=True)
+    parser.add_argument('--model', help="Model filename")
     parser.add_argument('--no-ui', help='Do not show UI during training', action='store_true')
     args = vars(parser.parse_args())
     if args["mode"] == "Single":
@@ -448,24 +466,32 @@ def main():
     elif args["mode"] == "Train":
         original_speed = 0
         fps = 2.0
+    elif args["mode"] == "Run":
+        modelName = args["model"]
+        if modelName == None:
+            print('Missing model filename')
+            return
+        trs = TRS(config, 0, fps, False)
+        game = Game(trs)
+
+        def running_thread():
+            run(modelName, game)
+
+        thread = Thread(target=running_thread)
+        thread.start()
+        trs.mainloop()
+        return
+
     trs = TRS(config, original_speed, fps, args["no_ui"])
 
     game = Game(trs)
 
-    train_network(game)
+    def training_thread():
+        train_network(game)
 
-#    def training_thread():
-#        conf = tf.ConfigProto()
-#        conf.gpu_options.allow_growth = True
-#        sess = tf.Session(config=conf)
-#        from keras import backend as K
-#        K.set_session(sess)
-#        model = buildmodel()
-#        trainNetwork(trs, model, args)
-#
-#    thread = Thread(target=training_thread)
-#    thread.start()
-#    trs.mainloop()
+    thread = Thread(target=training_thread)
+    thread.start()
+    trs.mainloop()
 
 
 if __name__ == "__main__":
