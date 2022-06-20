@@ -5,6 +5,10 @@ from trs import TRS
 from trs import Key
 from trs import Screenshot
 
+import argparse
+import skimage as skimage
+from skimage import transform, color, exposure
+
 class RewardCosmicFighter():
 
     default_reward = (-0.2, False)
@@ -92,8 +96,8 @@ class RewardBreakdown():
             # Score was not fully rendered yet
             return RewardBreakdown.default_reward
 
-        if self.ram.peek(0x3c00 + 668) == 80:
-            return (-1.0, True)
+#        if self.ram.peek(0x3c00 + 668) == 80:
+#            return (-1.0, True)
 
         delta = new_score - self.score
         if delta != 0:
@@ -121,271 +125,288 @@ class Game():
         self.trs = trs
         self.config = trs.config
         self.reward = self.config["reward"](trs.ram)
-        self.step = self.config["step"]
+        self.steps = self.config["step"]
         self.actions = self.config["actions"]
         viewport = self.config["viewport"]
         self.screenshot = Screenshot(trs.ram, viewport)
+        self.reset()
+    
+    def reset(self):
+        self.trs.boot()
         self.delta_tstates = 0
+
+        x_t, r_0, terminal = self.frame_step(0)
+        x_t = skimage.color.rgb2gray(x_t)
+        x_t = skimage.transform.resize(x_t, (84, 84))
+        x_t = skimage.exposure.rescale_intensity(x_t, out_range=(0, 255))
+        x_t = x_t / 255.0
+        self.state = np.stack((x_t, x_t, x_t, x_t), axis=2)
+        self.state = self.state.reshape(self.state.shape[0], self.state.shape[1], self.state.shape[2])  # 80*80*4
+        return self.state
 
     def frame_step(self, action):
         self.trs.keyboard.all_keys_up()
-        i, = np.where(action == 1)
-        keys = self.actions[i[0]]
+        keys = self.actions[action]
         if keys != None:
             for key in keys:
                 self.trs.keyboard.key_down(key)
-        tstates = self.step - self.delta_tstates
+        tstates = self.steps - self.delta_tstates
         self.delta_tstates = self.trs.run_for_tstates(tstates)
         reward, terminal = self.reward.compute()
         screenshot = self.screenshot.screenshot()
+        return (screenshot, reward, terminal)
+
+    def step(self, action):
+        screenshot, reward, terminal = self.frame_step(action)
         if terminal:
             self.reward.reset()
             self.trs.boot()
-            self.delta_tstates = 0
-        return (screenshot, reward, terminal)
+            self.reset()
+        else:
+            x_t1 = skimage.color.rgb2gray(screenshot)
+            x_t1 = skimage.transform.resize(x_t1, (84, 84))
+            x_t1 = skimage.exposure.rescale_intensity(x_t1, out_range=(0, 255))
+
+            x_t1 = x_t1 / 255.0
+        
+            x_t1 = x_t1.reshape(x_t1.shape[0], x_t1.shape[1], 1)  # 80x80x1
+            #x_t1 = np.asarray(x_t1).astype('float32')
+            self.state = np.append(x_t1, self.state[:, :, :3], axis=2)
+
+        return self.state, reward, terminal, None
 
 
 #----------------------------------------------------------------------------
 # The following is adopted from https://github.com/yanpanlau/Keras-FlappyBird
 #----------------------------------------------------------------------------
 
-import argparse
-import skimage as skimage
-from skimage import transform, color, exposure
-
-import random
 import numpy as np
-from collections import deque
-
-from threading import Thread
-
-import sqlite3, pickle
-
-import json
-import os.path
-from keras.models import Sequential
-from keras.models import clone_model
-from keras.layers.core import Dense, Activation, Flatten
-from keras.layers.convolutional import Conv2D
-from keras.optimizers import Adam
 import tensorflow as tf
+from tensorflow import keras
+from tensorflow.keras import layers
 
-CONFIG = 'nothreshold'
-ACTIONS = len(config["actions"])  # number of valid actions
-GAMMA = 0.99  # decay rate of past observations
-OBSERVATION = 5000.  # timesteps to observe before training
-EXPLORE = 1000000.  # frames over which to anneal epsilon
-FINAL_EPSILON = 0.1  # final value of epsilon
-INITIAL_EPSILON = 1  # starting value of epsilon
-REPLAY_MEMORY = 50000  # number of previous transitions to remember
-BATCH = 32  # size of minibatch
-FRAME_PER_ACTION = 1
-TARGET_MODEL_UPDATE = 10000
-LEARNING_RATE = 0.0001
-
-img_rows, img_cols = 80, 80
-# Convert image into Black and white
-img_channels = 4  # We stack 4 frames
+# Configuration paramaters for the whole setup
+seed = 42
+gamma = 0.99  # Discount factor for past rewards
+epsilon = 1.0  # Epsilon greedy parameter
+epsilon_min = 0.1  # Minimum epsilon greedy parameter
+epsilon_max = 1.0  # Maximum epsilon greedy parameter
+epsilon_interval = (
+    epsilon_max - epsilon_min
+)  # Rate at which to reduce chance of random action being taken
+batch_size = 32  # Size of batch taken from replay buffer
+max_steps_per_episode = 10000
 
 
-class ReplayMemory():
+"""
+## Implement the Deep Q-Network
 
-    def __init__(self, name, size):
-        self.size = size
-        self.D = deque()
+This network learns an approximation of the Q-table, which is a mapping between
+the states and actions that an agent will take. For every state we'll have four
+actions, that can be taken. The environment provides the state, and the action
+is chosen by selecting the larger of the four Q-values predicted in the output layer.
 
-    def add_transition(self, transition):
-        self.D.append(transition)
-        if len(self.D) > self.size:
-            self.D.popleft()
+"""
 
-    def get_mini_batch(self, batch_size):
-        return random.sample(self.D, batch_size)
+num_actions = 3
 
 
-class PersistentReplayMemory():
+def create_q_model():
+    # Network defined by the Deepmind paper
+    inputs = layers.Input(
+        shape=(
+            84,
+            84,
+            4,
+        )
+    )
 
-    def __init__(self, name, size):
-        self.size = size
-        self.conn = sqlite3.connect(name + '.db')
-        self.cursor = self.conn.cursor()
-        self.cursor.execute("create table if not exists replay_mem(id integer primary key, transition blob)")
-        row = self.cursor.execute("select min(id) from replay_mem").fetchone()[0]
-        self.tail = 0 if row is None else row
-        row = self.cursor.execute("select max(id) from replay_mem").fetchone()[0]
-        self.head = 0 if row is None else row + 1
+    # Convolutions on the frames on the screen
+    layer1 = layers.Conv2D(32, 8, strides=4, activation="relu")(inputs)
+    layer2 = layers.Conv2D(64, 4, strides=2, activation="relu")(layer1)
+    layer3 = layers.Conv2D(64, 3, strides=1, activation="relu")(layer2)
 
-    def add_transition(self, transition):
-        id = self.head
-        self.head += 1
-        self.cursor.execute("insert into replay_mem(id, transition) values (?, ?)", (id, sqlite3.Binary(pickle.dumps(transition, protocol=2))))
-        if self.head - self.tail > self.size:
-            id = self.tail
-            self.cursor.execute("delete from replay_mem where id=?", (id,))
-            self.tail += 1
-        self.conn.commit()
+    layer4 = layers.Flatten()(layer3)
 
-    def get_mini_batch(self, batch_size):
-        n = self.head - self.tail
-        if not 0 <= batch_size <= n:
-            raise ValueError("sample larger than population")
-        result = [None] * batch_size
-        selected = set()
-        for i in xrange(batch_size):
-            j = random.randrange(n)
-            while j in selected:
-                j = random.randrange(n)
-            selected.add(j)
-            result[i] = self.get_transition(j)
-        return result
+    layer5 = layers.Dense(512, activation="relu")(layer4)
+    action = layers.Dense(num_actions, activation="linear")(layer5)
 
-    def get_transition(self, i):
-        id = self.tail + i
-        row = self.cursor.execute("select transition from replay_mem where id = ?", (id,)).fetchone()
-        blob = row[0]
-        return pickle.loads(str(blob))
+    return keras.Model(inputs=inputs, outputs=action)
 
 
-def buildmodel():
-    model = Sequential()
-    model.add(Conv2D(32, (8, 8), strides=(4, 4), padding='same',
-                            input_shape=(img_rows, img_cols, img_channels)))  # 80*80*4
-    model.add(Activation('relu'))
-    model.add(Conv2D(64, (4, 4), strides=(2, 2), padding='same'))
-    model.add(Activation('relu'))
-    model.add(Conv2D(64, (3, 3), strides=(1, 1), padding='same'))
-    model.add(Activation('relu'))
-    model.add(Flatten())
-    model.add(Dense(512))
-    model.add(Activation('relu'))
-    model.add(Dense(ACTIONS))
+def train_network(env):
+    global seed
+    global gamma
+    global epsilon
+    global epsilon_min
+    global epsilon_max
+    global epsilon_interval
+    global batch_size
+    global max_steps_per_episode
 
-    optimizer = Adam(lr=LEARNING_RATE)
-    model.compile(loss='mse', optimizer=optimizer)
-    return model
+    # The first model makes the predictions for Q-values which are used to
+    # make a action.
+    model = create_q_model()
+    # Build a target model for the prediction of future rewards.
+    # The weights of a target model get updated every 10000 steps thus when the
+    # loss between the Q-values is calculated the target Q-value is stable.
+    model_target = create_q_model()
 
 
-def trainNetwork(trs, model, args):
-    # Target model
-    target_model = clone_model(model)
-    
-    # open up a game state to communicate with emulator
-    game_state = Game(trs)
+    """
+    ## Train
+    """
+    # In the Deepmind paper they use RMSProp however then Adam optimizer
+    # improves training time
+    optimizer = keras.optimizers.Adam(learning_rate=0.00025, clipnorm=1.0)
 
-    # store the previous observations in replay memory
-    name = config["name"]
-    D = ReplayMemory(name, REPLAY_MEMORY)
+    # Experience replay buffers
+    action_history = []
+    state_history = []
+    state_next_history = []
+    rewards_history = []
+    done_history = []
+    episode_reward_history = []
+    running_reward = 0
+    episode_count = 0
+    frame_count = 0
+    # Number of frames to take random action and observe output
+    epsilon_random_frames = 50000
+    # Number of frames for exploration
+    epsilon_greedy_frames = 1000000.0
+    # Maximum replay length
+    # Note: The Deepmind paper suggests 1000000 however this causes memory issues
+    max_memory_length = 100000
+    # Train the model after 4 actions
+    update_after_actions = 4
+    # How often to update the target network
+    update_target_network = 10000
+    # Using huber loss for stability
+    loss_function = keras.losses.Huber()
 
-    # get the first state by doing nothing and preprocess the image to 80x80x4
-    do_nothing = np.zeros(ACTIONS)
-    do_nothing[0] = 1
-    x_t, r_0, terminal = game_state.frame_step(do_nothing)
+    while True:  # Run until solved
+        state = np.array(env.reset())
+        episode_reward = 0
 
-    x_t = skimage.color.rgb2gray(x_t)
-    x_t = skimage.transform.resize(x_t, (80, 80))
-    x_t = skimage.exposure.rescale_intensity(x_t, out_range=(0, 255))
+        for timestep in range(1, max_steps_per_episode):
+            # env.render(); Adding this line would show the attempts
+            # of the agent in a pop up window.
+            frame_count += 1
 
-    x_t = x_t / 255.0
-    
-    s_t = np.stack((x_t, x_t, x_t, x_t), axis=2)
+            # Use epsilon-greedy for exploration
+            if frame_count < epsilon_random_frames or epsilon > np.random.rand(1)[0]:
+                # Take random action
+                action = np.random.choice(num_actions)
+            else:
+                # Predict action Q-values
+                # From environment state
+                state_tensor = tf.convert_to_tensor(state)
+                state_tensor = tf.expand_dims(state_tensor, 0)
+                action_probs = model(state_tensor, training=False)
+                # Take best action
+                action = tf.argmax(action_probs[0]).numpy()
 
-    # In Keras, need to reshape
-    s_t = s_t.reshape(1, s_t.shape[0], s_t.shape[1], s_t.shape[2])  # 1*80*80*4
+            # Decay probability of taking random action
+            epsilon -= epsilon_interval / epsilon_greedy_frames
+            epsilon = max(epsilon, epsilon_min)
 
-    t = 0
-    OBSERVE = OBSERVATION
-    epsilon = INITIAL_EPSILON
+            # Apply the sampled action in our environment
+            state_next, reward, done, _ = env.step(action)
+            state_next = np.array(state_next)
 
-    # Try to load previous model
-    modelName = name + ".h5"
-    if os.path.isfile(modelName):
-        model.load_weights(modelName)
-    metaName = name + ".json"
-    if os.path.isfile(metaName):
-        with open(metaName, "r") as infile:
-            meta = json.load(infile)
-            OBSERVE = meta["timestep"]
-            epsilon = meta["epsilon"]
-        
-    if args['mode'] == 'Run':
-        OBSERVE = 999999999  # We keep observe, never train
-        epsilon = -1
+            episode_reward += reward
 
-    while (True):
-        loss = 0
-        Q_sa = 0
-        action_index = 0
-        r_t = 0
-        # choose an action epsilon greedy
-        if random.random() <= epsilon:
-            print("----------Random Action----------")
-            action_index = random.randrange(ACTIONS)
-        else:
-            q = model.predict(s_t)  # input a stack of 4 images, get the prediction
-            max_Q = np.argmax(q)
-            action_index = max_Q
-        a_t = np.zeros([ACTIONS])
-        a_t[action_index] = 1
-        # run the selected action and observed next state and reward
-        for i in range(FRAME_PER_ACTION):
-            x_t1_colored, r_t, terminal = game_state.frame_step(a_t)
+            # Save actions and states in replay buffer
+            action_history.append(action)
+            state_history.append(state)
+            state_next_history.append(state_next)
+            done_history.append(done)
+            rewards_history.append(reward)
+            state = state_next
 
-        # We reduced the epsilon gradually
-        if epsilon > FINAL_EPSILON and t > OBSERVE:
-            epsilon -= (INITIAL_EPSILON - FINAL_EPSILON) / EXPLORE
+            # Update every fourth frame and once batch size is over 32
+            if frame_count % update_after_actions == 0 and len(done_history) > batch_size:
 
-        x_t1 = skimage.color.rgb2gray(x_t1_colored)
-        x_t1 = skimage.transform.resize(x_t1, (80, 80))
-        x_t1 = skimage.exposure.rescale_intensity(x_t1, out_range=(0, 255))
+                # Get indices of samples for replay buffers
+                indices = np.random.choice(range(len(done_history)), size=batch_size)
 
-        x_t1 = x_t1 / 255.0
-        
-        x_t1 = x_t1.reshape(1, x_t1.shape[0], x_t1.shape[1], 1)  # 1x80x80x1
-        s_t1 = np.append(x_t1, s_t[:, :, :, :3], axis=3)
+                # Using list comprehension to sample from replay buffer
+                state_sample = np.array([state_history[i] for i in indices])
+                state_next_sample = np.array([state_next_history[i] for i in indices])
+                rewards_sample = [rewards_history[i] for i in indices]
+                action_sample = [action_history[i] for i in indices]
+                done_sample = tf.convert_to_tensor(
+                    [float(done_history[i]) for i in indices]
+                )
 
-        # store the transition in D
-        D.add_transition((s_t, action_index, r_t, s_t1, terminal))
+                # Build the updated Q-values for the sampled future states
+                # Use the target model for stability
+                future_rewards = model_target.predict(state_next_sample)
+                # Q value = reward + discount factor * expected future reward
+                updated_q_values = rewards_sample + gamma * tf.reduce_max(
+                    future_rewards, axis=1
+                )
 
-        # only train if done observing
-        if t > OBSERVE:
-            # sample a minibatch to train on
-            minibatch = D.get_mini_batch(BATCH)
+                # If final frame set the last value to -1
+                updated_q_values = updated_q_values * (1 - done_sample) - done_sample
 
-            # Now we do the experience replay
-            state_t, action_t, reward_t, state_t1, terminal = zip(*minibatch)
-            state_t = np.concatenate(state_t)
-            state_t1 = np.concatenate(state_t1)
-            targets = target_model.predict(state_t)
-            Q_sa = target_model.predict(state_t1)
-            targets[range(BATCH), action_t] = reward_t + GAMMA * np.max(Q_sa, axis=1) * np.invert(terminal)
-            loss += model.train_on_batch(state_t, targets)
+                # Create a mask so we only calculate loss on the updated Q-values
+                masks = tf.one_hot(action_sample, num_actions)
 
-        s_t = s_t1
-        t = t + 1
+                with tf.GradientTape() as tape:
+                    # Train the model on the states and updated Q-values
+                    q_values = model(state_sample)
 
-        # Save progress and update training model
-        if t % TARGET_MODEL_UPDATE == 0:
-            name = config["name"]
-            model.save_weights(name + ".h5", overwrite=True)
-            meta = {"timestep": t, "epsilon": epsilon}
-            with open(name + ".json", "w") as outfile:
-                json.dump(meta, outfile)
-            target_model = clone_model(model)
+                    # Apply the masks to the Q-values to get the Q-value for action taken
+                    q_action = tf.reduce_sum(tf.multiply(q_values, masks), axis=1)
+                    # Calculate loss between new Q-value and old Q-value
+                    loss = loss_function(updated_q_values, q_action)
 
-        # print info
-        state = ""
-        if t <= OBSERVE:
-            state = "observe"
-        else:
-            state = "train"
+                # Backpropagation
+                grads = tape.gradient(loss, model.trainable_variables)
+                optimizer.apply_gradients(zip(grads, model.trainable_variables))
 
-        print("TIMESTEP", t, "/ STATE", state, \
-              "/ EPSILON", epsilon, "/ ACTION", action_index, "/ REWARD", r_t, \
-              "/ Q_MAX ", np.max(Q_sa), "/ Loss ", loss)
+            if frame_count % update_target_network == 0:
+                # update the the target network with new weights
+                model_target.set_weights(model.get_weights())
+                # Log details
+                template = "running reward: {:.2f} at episode {}, frame count {}"
+                print(template.format(running_reward, episode_count, frame_count))
 
-    print("Episode finished!")
-    print("************************")
+            # Save progress and update training model
+            if frame_count % 100000 == 0:
+                name = config["name"]
+                model.save_weights(name + str(frame_count) + ".h5", overwrite=True)
 
+            # Limit the state and reward history
+            if len(rewards_history) > max_memory_length:
+                del rewards_history[:1]
+                del state_history[:1]
+                del state_next_history[:1]
+                del action_history[:1]
+                del done_history[:1]
+
+            if done:
+                break
+
+        # Update running reward to check condition for solving
+        episode_reward_history.append(episode_reward)
+        if len(episode_reward_history) > 100:
+            del episode_reward_history[:1]
+        running_reward = np.mean(episode_reward_history)
+
+        episode_count += 1
+
+        if running_reward > 40:  # Condition to consider the task solved
+            print("Solved at episode {}!".format(episode_count))
+            break
+
+
+
+
+#--------------------------------------------------------------------------------------------
+#--------------------------------------------------------------------------------------------
+#--------------------------------------------------------------------------------------------
 
 def single_step():
     global config
@@ -428,20 +449,23 @@ def main():
         original_speed = 0
         fps = 2.0
     trs = TRS(config, original_speed, fps, args["no_ui"])
-    trs.boot()
 
-    def training_thread():
-        conf = tf.ConfigProto()
-        conf.gpu_options.allow_growth = True
-        sess = tf.Session(config=conf)
-        from keras import backend as K
-        K.set_session(sess)
-        model = buildmodel()
-        trainNetwork(trs, model, args)
+    game = Game(trs)
 
-    thread = Thread(target=training_thread)
-    thread.start()
-    trs.mainloop()
+    train_network(game)
+
+#    def training_thread():
+#        conf = tf.ConfigProto()
+#        conf.gpu_options.allow_growth = True
+#        sess = tf.Session(config=conf)
+#        from keras import backend as K
+#        K.set_session(sess)
+#        model = buildmodel()
+#        trainNetwork(trs, model, args)
+#
+#    thread = Thread(target=training_thread)
+#    thread.start()
+#    trs.mainloop()
 
 
 if __name__ == "__main__":
