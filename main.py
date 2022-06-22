@@ -137,12 +137,9 @@ class Game():
         self.delta_tstates = 0
 
         x_t, r_0, terminal = self.frame_step(0)
-        x_t = skimage.color.rgb2gray(x_t)
         x_t = skimage.transform.resize(x_t, (84, 84))
-        x_t = skimage.exposure.rescale_intensity(x_t, out_range=(0, 255))
-        x_t = x_t / 255.0
         self.state = np.stack((x_t, x_t, x_t, x_t), axis=2)
-        self.state = self.state.reshape(self.state.shape[0], self.state.shape[1], self.state.shape[2])  # 80*80*4
+        self.state = self.state.reshape(self.state.shape[0], self.state.shape[1], self.state.shape[2])  # 84*84*4
         return self.state
 
     def frame_step(self, action):
@@ -165,7 +162,6 @@ class Game():
             self.reset()
         else:
             x_t1 = skimage.transform.resize(screenshot, (84, 84))
-            x_t1 = x_t1[:, :, 0]
             x_t1 = x_t1.reshape(x_t1.shape[0], x_t1.shape[1], 1)  # 84x84x1
             self.state = np.append(x_t1, self.state[:, :, :3], axis=2)
 
@@ -372,7 +368,7 @@ def train_network(env):
             # Save progress and update training model
             if frame_count % 100000 == 0:
                 name = config["name"]
-                model.save_weights(name + str(frame_count) + ".h5", overwrite=True)
+                model.save_weights(name + '-' + str(frame_count) + ".h5", overwrite=True)
 
             # Limit the state and reward history
             if len(rewards_history) > max_memory_length:
@@ -437,9 +433,7 @@ def single_step():
         trs.boot()
         game_state = Game(trs)
         while True:
-            left_shoot = np.zeros(ACTIONS)
-            left_shoot[0] = 1
-            (screenshot, reward, terminal) = game_state.frame_step(left_shoot)
+            (screenshot, reward, terminal) = game_state.frame_step(0)
             print (reward, terminal)
             sys.stdin.readline()
     thread = Thread(target=step_thread)

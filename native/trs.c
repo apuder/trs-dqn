@@ -1,6 +1,7 @@
 
 #include <z80.c>
 #include <unistd.h>
+#include <strings.h>
 #include <time.h>
 #include <sys/time.h>
 #include <errno.h>
@@ -25,6 +26,27 @@ static volatile int z80_is_running = 1;
 static Z80Context ctx;
 
 volatile byte ram[64 * 1024];
+
+float screenshot[(2 * 64) * (3 * 16)];
+
+void take_screenshot(int left, int top, int width, int height)
+{
+    bzero(screenshot, sizeof(screenshot));
+    for (int x = left; x < (left + width); x++) {
+        for (int y = top; y < (top + height); y++) {
+            byte ch = ram[0x3c00 + y * 64 + x];
+            if (ch < 0x80 || ch > 0xbf) continue;
+            ch -= 0x80;
+            int base = (y * 3 * 128) + (x * 2);
+            for (int i = 0; i < 6; i++) {
+                if (ch & 1) {
+                    screenshot[base + (i & 1) + (i >> 1) * 128] = 1.0f;
+                }
+                ch = ch >> 1;
+            }
+        }
+    }
+}
 
 static byte z80_mem_read(int param, ushort address)
 {
