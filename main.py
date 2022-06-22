@@ -168,9 +168,9 @@ class Game():
         return self.state, reward, terminal, None
 
 
-#----------------------------------------------------------------------------
-# The following is adopted from https://github.com/yanpanlau/Keras-FlappyBird
-#----------------------------------------------------------------------------
+#------------------------------------------------------------------------------------
+# The following is adopted from https://keras.io/examples/rl/deep_q_network_breakout/
+#------------------------------------------------------------------------------------
 
 import numpy as np
 import tensorflow as tf
@@ -465,7 +465,7 @@ def main():
         if modelName == None:
             print('Missing model filename')
             return
-        trs = TRS(config, 0, fps, False)
+        trs = TRS(config, 1, fps, False)
         game = Game(trs)
 
         def running_thread():
