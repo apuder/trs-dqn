@@ -97,7 +97,7 @@ class RewardBreakdown():
             # Score was not fully rendered yet
             return RewardBreakdown.default_reward
 
-        if self.ram.peek(0x3c00 + 668) == 80:
+        if self.ram.peek(0x3c00 + 673) in [ord('B'), ord('H'), ord('O')]: # Game Over/Pass Ball/That Hurts
             return (0.0, True)
 
         delta = new_score - self.score
