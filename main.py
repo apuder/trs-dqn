@@ -76,7 +76,7 @@ config_cosmic = {
 
 class RewardBreakdown():
 
-    default_reward = (0.0, False)
+    default_reward = (0.0, False, False) # (Reward, Lost life, Game Over)
 
     def __init__(self, ram):
         self.ram = ram
@@ -97,14 +97,17 @@ class RewardBreakdown():
             # Score was not fully rendered yet
             return RewardBreakdown.default_reward
 
-        if self.ram.peek(0x3c00 + 673) in [ord('B'), ord('H'), ord('O')]: # Game Over/Pass Ball/That Hurts
-            return (0.0, True)
+        ch = self.ram.peek(0x3c00 + 673)
+        if ch == ord('O'):
+            return (0.0, True, True) # Game Over
+        if ch in [ord('B'), ord('H')]: # Lost life: Pass Ball/That Hurts
+            return (0.0, True, False)
 
         delta = new_score - self.score
         if delta != 0:
             # Score increased
             self.score = new_score
-            return (1.0, False)
+            return (1.0, False, False)
         return RewardBreakdown.default_reward
 
 config = {
@@ -114,7 +117,7 @@ config = {
              1000000, 800000],
     "viewport": (0, 2, 64, 14),
     "step": 50000,
-    "actions": [None, [Key.LEFT], [Key.RIGHT]],
+    "actions": [None, [Key.LEFT], [Key.RIGHT], [Key.SPACE]],
     "reward": RewardBreakdown
 }
 
@@ -136,7 +139,7 @@ class Game():
         self.trs.boot()
         self.delta_tstates = 0
 
-        x_t, r_0, terminal = self.frame_step(0)
+        x_t, r_0, terminal, _ = self.frame_step(0)
         x_t = skimage.transform.resize(x_t, (84, 84))
         self.state = np.stack((x_t, x_t, x_t, x_t), axis=2)
         self.state = self.state.reshape(self.state.shape[0], self.state.shape[1], self.state.shape[2])  # 84*84*4
@@ -150,13 +153,14 @@ class Game():
                 self.trs.keyboard.key_down(key)
         tstates = self.steps - self.delta_tstates
         self.delta_tstates = self.trs.run_for_tstates(tstates)
-        reward, terminal = self.reward.compute()
+        reward, terminal, game_over = self.reward.compute()
         screenshot = self.screenshot.screenshot()
-        return (screenshot, reward, terminal)
+        return (screenshot, reward, terminal, game_over)
 
     def step(self, action):
-        screenshot, reward, terminal = self.frame_step(action)
-        if terminal:
+        screenshot, reward, terminal, game_over = self.frame_step(action)
+        if game_over:
+            print('Reset')
             self.reward.reset()
             self.trs.boot()
             self.reset()
@@ -200,7 +204,7 @@ is chosen by selecting the larger of the four Q-values predicted in the output l
 
 """
 
-num_actions = 3
+num_actions = len(config["actions"])
 
 
 def create_q_model():
@@ -276,8 +280,9 @@ def train_network(env):
     # Using huber loss for stability
     loss_function = keras.losses.Huber()
 
+    state = np.array(env.reset())
+
     while True:  # Run until solved
-        state = np.array(env.reset())
         episode_reward = 0
 
         for timestep in range(1, max_steps_per_episode):
