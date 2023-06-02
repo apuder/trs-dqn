@@ -9,6 +9,12 @@ import argparse
 import skimage as skimage
 from skimage import transform, color, exposure
 from threading import Thread
+from perf_timer import PerformanceTimerImpl, PerformanceTimer
+
+import tensorflow as tf
+
+from absl import logging as log
+perf = PerformanceTimerImpl()
 
 class RewardCosmicFighter():
 
@@ -134,7 +140,7 @@ class Game():
         viewport = self.config["viewport"]
         self.screenshot = Screenshot(trs.ram, viewport)
         self.reset()
-    
+
     def reset(self):
         self.trs.boot()
         self.delta_tstates = 0
@@ -283,8 +289,10 @@ def train_network(env):
 
     while True:  # Run until solved
         episode_reward = 0
+        print('OUTER LOOP')
 
         for timestep in range(1, max_steps_per_episode):
+            print('INNER LOOP')
             # env.render(); Adding this line would show the attempts
             # of the agent in a pop up window.
             frame_count += 1
@@ -296,11 +304,13 @@ def train_network(env):
             else:
                 # Predict action Q-values
                 # From environment state
+                perf.quick_start()
                 state_tensor = tf.convert_to_tensor(state)
                 state_tensor = tf.expand_dims(state_tensor, 0)
                 action_probs = model(state_tensor, training=False)
                 # Take best action
                 action = tf.argmax(action_probs[0]).numpy()
+                perf.quick_end('Predict action Q-values')
 
             # Decay probability of taking random action
             epsilon -= epsilon_interval / epsilon_greedy_frames
@@ -337,7 +347,9 @@ def train_network(env):
 
                 # Build the updated Q-values for the sampled future states
                 # Use the target model for stability
+                perf.quick_start()
                 future_rewards = model_target.predict(state_next_sample)
+                perf.quick_end('Predict')
                 # Q value = reward + discount factor * expected future reward
                 updated_q_values = rewards_sample + gamma * tf.reduce_max(
                     future_rewards, axis=1
@@ -359,8 +371,10 @@ def train_network(env):
                     loss = loss_function(updated_q_values, q_action)
 
                 # Backpropagation
+                perf.quick_start()
                 grads = tape.gradient(loss, model.trainable_variables)
                 optimizer.apply_gradients(zip(grads, model.trainable_variables))
+                perf.quick_end('Back Prop')
 
             if frame_count % update_target_network == 0:
                 # update the the target network with new weights
@@ -373,6 +387,7 @@ def train_network(env):
             if frame_count % 100000 == 0:
                 name = config["name"]
                 model.save_weights(name + '-' + str(frame_count) + ".h5", overwrite=True)
+                print(f'==> Progress saved. Frame count: {frame_count}, Running rewards: {running_reward}')
 
             # Limit the state and reward history
             if len(rewards_history) > max_memory_length:
@@ -383,6 +398,7 @@ def train_network(env):
                 del done_history[:1]
 
             if done:
+                print('==> DONE')
                 break
 
         # Update running reward to check condition for solving
@@ -392,6 +408,7 @@ def train_network(env):
         running_reward = np.mean(episode_reward_history)
 
         episode_count += 1
+        print(f'==> LOOP. Episode incremented to {episode_count}, Running rewards: {running_reward}')
 
         if running_reward > 40:  # Condition to consider the task solved
             print("Solved at episode {}!".format(episode_count))
@@ -443,8 +460,10 @@ def single_step():
     thread = Thread(target=step_thread)
     thread.start()
     trs.mainloop()
-    
+
 def main():
+    log.set_verbosity(log.DEBUG)
+
     global config
     parser = argparse.ArgumentParser(description='TRS DeepQ Network')
     parser.add_argument('-m', '--mode', help='Train/Run/Play/Single', required=True)
