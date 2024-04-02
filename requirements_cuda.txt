@@ -24,6 +24,9 @@ ml-dtypes==0.3.2
 namex==0.0.7
 networkx==3.1
 numpy==1.26.4
+nvidia-cublas-cu11==11.11.3.6
+nvidia-cuda-nvrtc-cu11==11.8.89
+nvidia-cudnn-cu11==8.9.6.50
 oauthlib==3.2.2
 opt-einsum==3.3.0
 optree==0.11.0
