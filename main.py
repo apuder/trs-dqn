@@ -406,10 +406,10 @@ def train_network(env):
                 print(template.format(running_reward, episode_count, frame_count))
 
             # Save progress and update training model
-            if frame_count % 100000 == 0:
+            if frame_count % 100_000 == 0:
                 name = config["name"]
                 model.save_weights(
-                    name + "-" + str(frame_count) + ".h5", overwrite=True
+                    name + "-" + str(frame_count) + ".weights.h5", overwrite=True
                 )
                 print(
                     f"==> Progress saved. Frame count: {frame_count}, Running rewards: {running_reward}"
