@@ -1,5 +1,2 @@
-*.so
-*.pyc
-*.iws
-**/.idea/workspace.xml
-**/.idea/tasks.xml
+venv
+__pycache__
