@@ -1,4 +1,3 @@
-
 from __future__ import print_function
 
 from trs import TRS
@@ -14,9 +13,11 @@ from perf_timer import PerformanceTimerImpl, PerformanceTimer
 import tensorflow as tf
 
 from absl import logging as log
+
 perf = PerformanceTimerImpl()
 
-class RewardCosmicFighter():
+
+class RewardCosmicFighter:
 
     default_reward = (-0.2, False)
 
@@ -30,13 +31,13 @@ class RewardCosmicFighter():
     def compute(self):
         b = bytearray()
         for i in range(15):
-            b.append(self.ram.peek(0x3c00 + i))
+            b.append(self.ram.peek(0x3C00 + i))
 
         if 0x20 not in b:
             # Score not shown right now
-            #if 0xbf in b:
-                # Evil eye appears to be attacking
-                #return (-0.2, False)
+            # if 0xbf in b:
+            # Evil eye appears to be attacking
+            # return (-0.2, False)
             return RewardCosmicFighter.default_reward
         # Get score
         try:
@@ -51,7 +52,7 @@ class RewardCosmicFighter():
             # Score was not fully rendered yet
             return RewardCosmicFighter.default_reward
 
-        if b.count(b'\x5b') == 2:
+        if b.count(b"\x5b") == 2:
             # Lost a ship. Game over
             return (-1.0, True)
 
@@ -66,23 +67,29 @@ class RewardCosmicFighter():
                 return (1.0, False)
         return RewardCosmicFighter.default_reward
 
+
 config_cosmic = {
     "name": "cosmic",
     "cmd": "var/cosmic.cmd",
     "boot": [1000000, Key.CLEAR, Key._1, 1000000, 1000000, 1678000],
     "viewport": (0, 2, 64, 14),
     "step": 50000,
-    "actions": [None, [Key.SPACE], [Key.LEFT], [Key.LEFT, Key.SPACE],
-                [Key.RIGHT], [Key.RIGHT, Key.SPACE]
-                #, [Key.D]
-                ],
-    "reward": RewardCosmicFighter
+    "actions": [
+        None,
+        [Key.SPACE],
+        [Key.LEFT],
+        [Key.LEFT, Key.SPACE],
+        [Key.RIGHT],
+        [Key.RIGHT, Key.SPACE],
+        # , [Key.D]
+    ],
+    "reward": RewardCosmicFighter,
 }
 
 
-class RewardBreakdown():
+class RewardBreakdown:
 
-    default_reward = (0.0, False, False) # (Reward, Lost life, Game Over)
+    default_reward = (0.0, False, False)  # (Reward, Lost life, Game Over)
 
     def __init__(self, ram):
         self.ram = ram
@@ -94,7 +101,7 @@ class RewardBreakdown():
     def compute(self):
         b = bytearray()
         for i in range(5):
-            b.append(self.ram.peek(0x3c00 + 6 + i))
+            b.append(self.ram.peek(0x3C00 + 6 + i))
 
         # Get score
         try:
@@ -103,10 +110,10 @@ class RewardBreakdown():
             # Score was not fully rendered yet
             return RewardBreakdown.default_reward
 
-        ch = self.ram.peek(0x3c00 + 673)
-        if ch == ord('O'):
-            return (-1.0, True, True) # Game Over
-        if ch in [ord('B'), ord('H')]: # Lost life: Pass Ball/That Hurts
+        ch = self.ram.peek(0x3C00 + 673)
+        if ch == ord("O"):
+            return (-1.0, True, True)  # Game Over
+        if ch in [ord("B"), ord("H")]:  # Lost life: Pass Ball/That Hurts
             return (-1.0, True, False)
 
         delta = new_score - self.score
@@ -116,20 +123,31 @@ class RewardBreakdown():
             return (1.0, False, False)
         return RewardBreakdown.default_reward
 
+
 config = {
     "name": "breakdown",
     "cmd": "var/breakdown.cmd",
-    "boot": [1000000, 1000000, 1000000, Key.SPACE, 1000000, 1000000, 1000000, 1000000, 1000000,
-             1000000, 800000],
+    "boot": [
+        1000000,
+        1000000,
+        1000000,
+        Key.SPACE,
+        1000000,
+        1000000,
+        1000000,
+        1000000,
+        1000000,
+        1000000,
+        800000,
+    ],
     "viewport": (0, 2, 64, 14),
     "step": 50000,
     "actions": [None, [Key.LEFT], [Key.RIGHT], [Key.SPACE]],
-    "reward": RewardBreakdown
+    "reward": RewardBreakdown,
 }
 
 
-
-class Game():
+class Game:
 
     def __init__(self, trs):
         self.trs = trs
@@ -148,7 +166,9 @@ class Game():
         x_t, r_0, terminal, _ = self.frame_step(0)
         x_t = skimage.transform.resize(x_t, (84, 84))
         self.state = np.stack((x_t, x_t, x_t, x_t), axis=2)
-        self.state = self.state.reshape(self.state.shape[0], self.state.shape[1], self.state.shape[2])  # 84*84*4
+        self.state = self.state.reshape(
+            self.state.shape[0], self.state.shape[1], self.state.shape[2]
+        )  # 84*84*4
         return self.state
 
     def frame_step(self, action):
@@ -177,9 +197,9 @@ class Game():
         return self.state, reward, terminal, None
 
 
-#------------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------------
 # The following is adopted from https://keras.io/examples/rl/deep_q_network_breakout/
-#------------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------------
 
 import numpy as np
 import tensorflow as tf
@@ -253,7 +273,6 @@ def train_network(env):
     # loss between the Q-values is calculated the target Q-value is stable.
     model_target = create_q_model()
 
-
     """
     ## Train
     """
@@ -289,13 +308,13 @@ def train_network(env):
 
     while True:  # Run until solved
         episode_reward = 0
-        print('OUTER LOOP')
+        print("OUTER LOOP")
 
         for timestep in range(1, max_steps_per_episode):
-            print('INNER LOOP')
             # env.render(); Adding this line would show the attempts
             # of the agent in a pop up window.
             frame_count += 1
+            log.info("Frame #%d", frame_count)
 
             # Use epsilon-greedy for exploration
             if frame_count < epsilon_random_frames or epsilon > np.random.rand(1)[0]:
@@ -310,7 +329,7 @@ def train_network(env):
                 action_probs = model(state_tensor, training=False)
                 # Take best action
                 action = tf.argmax(action_probs[0]).numpy()
-                perf.quick_end('Predict action Q-values')
+                perf.quick_end("Predict action Q-values")
 
             # Decay probability of taking random action
             epsilon -= epsilon_interval / epsilon_greedy_frames
@@ -331,7 +350,10 @@ def train_network(env):
             state = state_next
 
             # Update every fourth frame and once batch size is over 32
-            if frame_count % update_after_actions == 0 and len(done_history) > batch_size:
+            if (
+                frame_count % update_after_actions == 0
+                and len(done_history) > batch_size
+            ):
 
                 # Get indices of samples for replay buffers
                 indices = np.random.choice(range(len(done_history)), size=batch_size)
@@ -349,7 +371,7 @@ def train_network(env):
                 # Use the target model for stability
                 perf.quick_start()
                 future_rewards = model_target.predict(state_next_sample)
-                perf.quick_end('Predict')
+                perf.quick_end("Predict")
                 # Q value = reward + discount factor * expected future reward
                 updated_q_values = rewards_sample + gamma * tf.reduce_max(
                     future_rewards, axis=1
@@ -374,7 +396,7 @@ def train_network(env):
                 perf.quick_start()
                 grads = tape.gradient(loss, model.trainable_variables)
                 optimizer.apply_gradients(zip(grads, model.trainable_variables))
-                perf.quick_end('Back Prop')
+                perf.quick_end("Back Prop")
 
             if frame_count % update_target_network == 0:
                 # update the the target network with new weights
@@ -386,8 +408,12 @@ def train_network(env):
             # Save progress and update training model
             if frame_count % 100000 == 0:
                 name = config["name"]
-                model.save_weights(name + '-' + str(frame_count) + ".h5", overwrite=True)
-                print(f'==> Progress saved. Frame count: {frame_count}, Running rewards: {running_reward}')
+                model.save_weights(
+                    name + "-" + str(frame_count) + ".h5", overwrite=True
+                )
+                print(
+                    f"==> Progress saved. Frame count: {frame_count}, Running rewards: {running_reward}"
+                )
 
             # Limit the state and reward history
             if len(rewards_history) > max_memory_length:
@@ -398,7 +424,7 @@ def train_network(env):
                 del done_history[:1]
 
             if done:
-                print('==> DONE')
+                print("==> DONE")
                 break
 
         # Update running reward to check condition for solving
@@ -408,24 +434,25 @@ def train_network(env):
         running_reward = np.mean(episode_reward_history)
 
         episode_count += 1
-        print(f'==> LOOP. Episode incremented to {episode_count}, Running rewards: {running_reward}')
+        print(
+            f"==> LOOP. Episode incremented to {episode_count}, Running rewards: {running_reward}"
+        )
 
         if running_reward > 40:  # Condition to consider the task solved
             print("Solved at episode {}!".format(episode_count))
             break
 
 
-
-
-#--------------------------------------------------------------------------------------------
-#--------------------------------------------------------------------------------------------
-#--------------------------------------------------------------------------------------------
+# --------------------------------------------------------------------------------------------
+# --------------------------------------------------------------------------------------------
+# --------------------------------------------------------------------------------------------
 
 import os
 
+
 def run(modelName, env):
     if not os.path.isfile(modelName):
-        print('Model ' + modelName + ' not found!')
+        print("Model " + modelName + " not found!")
         return
     model = create_q_model()
     model.load_weights(modelName)
@@ -445,30 +472,36 @@ def run(modelName, env):
 def single_step():
     global config
     import sys
+
     trs = TRS(config, False, 20, False)
-    #trs.boot()
-    #trs.boot()
-    #trs.boot()
-    #trs.boot()
+
+    # trs.boot()
+    # trs.boot()
+    # trs.boot()
+    # trs.boot()
     def step_thread():
         trs.boot()
         game_state = Game(trs)
         while True:
             (screenshot, reward, terminal) = game_state.frame_step(0)
-            print (reward, terminal)
+            print(reward, terminal)
             sys.stdin.readline()
+
     thread = Thread(target=step_thread)
     thread.start()
     trs.mainloop()
+
 
 def main():
     log.set_verbosity(log.DEBUG)
 
     global config
-    parser = argparse.ArgumentParser(description='TRS DeepQ Network')
-    parser.add_argument('-m', '--mode', help='Train/Run/Play/Single', required=True)
-    parser.add_argument('--model', help="Model filename")
-    parser.add_argument('--no-ui', help='Do not show UI during training', action='store_true')
+    parser = argparse.ArgumentParser(description="TRS DeepQ Network")
+    parser.add_argument("-m", "--mode", help="Train/Run/Play/Single", required=True)
+    parser.add_argument("--model", help="Model filename")
+    parser.add_argument(
+        "--no-ui", help="Do not show UI during training", action="store_true"
+    )
     args = vars(parser.parse_args())
     if args["mode"] == "Single":
         single_step()
@@ -486,7 +519,7 @@ def main():
     elif args["mode"] == "Run":
         modelName = args["model"]
         if modelName == None:
-            print('Missing model filename')
+            print("Missing model filename")
             return
         trs = TRS(config, 1, fps, False)
         game = Game(trs)
