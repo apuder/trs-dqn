@@ -112,9 +112,9 @@ class RewardBreakdown:
 
         ch = self.ram.peek(0x3C00 + 673)
         if ch == ord("O"):
-            return (-1.0, True, True)  # Game Over
+            return (0.0, True, True)  # Game Over
         if ch in [ord("B"), ord("H")]:  # Lost life: Pass Ball/That Hurts
-            return (-1.0, True, False)
+            return (0.0, True, False)
 
         delta = new_score - self.score
         if delta != 0:
