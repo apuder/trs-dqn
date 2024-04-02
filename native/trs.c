@@ -11,9 +11,9 @@
 #define CLOCK_MHZ_1 1.77408
 #define CYCLES_PER_TIMER ((unsigned int) (CLOCK_MHZ_1 * 1000000 / TIMER_HZ_1))
 
-typedef byte (*Z80_MEM_READ_FUNC)(int, ushort);
+typedef unsigned char (*Z80_MEM_READ_FUNC)(unsigned long, ushort);
 typedef void (*Z80_MEM_WRITE_FUNC)(int, ushort, byte);
-typedef byte (*Z80_IO_READ_FUNC)(int, ushort);
+typedef unsigned char (*Z80_IO_READ_FUNC)(unsigned long, ushort);
 typedef void (*Z80_IO_WRITE_FUNC)(int, ushort, byte);
 
 static Z80_MEM_READ_FUNC z80_mem_read_func = NULL;
@@ -25,7 +25,7 @@ static volatile int z80_is_running = 1;
 
 static Z80Context ctx;
 
-volatile byte ram[64 * 1024];
+volatile unsigned char ram[64 * 1024];
 
 float screenshot[(2 * 64) * (3 * 16)];
 
@@ -48,7 +48,7 @@ void take_screenshot(int left, int top, int width, int height)
     }
 }
 
-static byte z80_mem_read(int param, ushort address)
+static unsigned char z80_mem_read(unsigned long param, ushort address)
 {
     if (z80_mem_read_func != NULL) {
         return (*z80_mem_read_func)(param, address);
@@ -56,7 +56,7 @@ static byte z80_mem_read(int param, ushort address)
     return ram[address];
 }
 
-static void z80_mem_write(int param, ushort address, byte data)
+static void z80_mem_write(unsigned long param, ushort address, unsigned char data)
 {
     if (z80_mem_write_func != NULL) {
         (*z80_mem_write_func)(param, address, data);
@@ -64,7 +64,7 @@ static void z80_mem_write(int param, ushort address, byte data)
     ram[address] = data;
 }
 
-static byte z80_io_read(int param, ushort address)
+static unsigned char z80_io_read(unsigned long param, ushort address)
 {
     if (z80_io_read_func != NULL) {
         return (*z80_io_read_func)(param, address);
@@ -72,7 +72,7 @@ static byte z80_io_read(int param, ushort address)
     return 255;
 }
 
-static void z80_io_write(int param, ushort address, byte data)
+static void z80_io_write(unsigned long param, ushort address, unsigned char data)
 {
     if (z80_io_write_func != NULL) {
         (*z80_io_write_func)(param, address, data);
