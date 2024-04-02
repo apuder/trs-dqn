@@ -7,9 +7,19 @@ Work-in-progress.
 *Forked from https://github.com/apuder/trs-dqn*
 
 ## Setup
+> **NOTE**: This is working with Python 3.11 (and probably some earlier versions), but DOES NOT
+            work with 3.12 since some dependencies are not supported yet.
+
 Check this repository out recursively!
 ```
 git clone --recursive <repo url>
+```
+
+Note: if you forgot to check it out recursively, you can run the following after the fact,
+      without starting over:
+```
+git submodule init
+git submodule update
 ```
 
 Run the following inside the repo folder the first time after you've checked out
