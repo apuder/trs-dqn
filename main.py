@@ -14,6 +14,13 @@ import tensorflow as tf
 
 from absl import logging as log
 
+import numpy as np
+import tensorflow as tf
+from tensorflow import keras
+from tensorflow.keras import layers
+import os
+import sys
+
 perf = PerformanceTimerImpl()
 
 
@@ -155,115 +162,86 @@ class Game:
         self.reward = self.config["reward"](trs.ram)
         self.steps = self.config["step"]
         self.actions = self.config["actions"]
+        self.action_repeat = 4  # Repeat the same action N times like DeepMind
         viewport = self.config["viewport"]
         self.screenshot = Screenshot(trs.ram, viewport)
+        self.steps_survived = 0
         self.reset()
 
     def reset(self):
         self.trs.boot()
+        self.reward.reset()
         self.delta_tstates = 0
+        self.steps_survived = 0
 
         x_t, r_0, terminal, _ = self.frame_step(0)
         x_t = skimage.transform.resize(x_t, (84, 84))
         self.state = np.stack((x_t, x_t, x_t, x_t), axis=2)
-        self.state = self.state.reshape(
-            self.state.shape[0], self.state.shape[1], self.state.shape[2]
-        )  # 84*84*4
         return self.state
 
     def frame_step(self, action):
-        self.trs.keyboard.all_keys_up()
-        keys = self.actions[action]
-        if keys != None:
-            for key in keys:
-                self.trs.keyboard.key_down(key)
-        tstates = self.steps - self.delta_tstates
-        self.delta_tstates = self.trs.run_for_tstates(tstates)
-        reward, terminal, game_over = self.reward.compute()
-        screenshot = self.screenshot.screenshot()
-        return (screenshot, reward, terminal, game_over)
+        total_reward = 0
+        terminal = False
+        game_over = False
+        last_screenshot = None
+
+        for _ in range(self.action_repeat):
+            self.trs.keyboard.all_keys_up()
+            keys = self.actions[action]
+            if keys:
+                for key in keys:
+                    self.trs.keyboard.key_down(key)
+            tstates = self.steps - self.delta_tstates
+            self.delta_tstates = self.trs.run_for_tstates(tstates)
+            reward, term, over = self.reward.compute()
+
+            self.steps_survived += 1
+            reward += 0.001 * self.steps_survived
+
+            total_reward += reward
+            terminal = terminal or term
+            game_over = game_over or over
+
+            last_screenshot = self.screenshot.screenshot()
+
+            if game_over or terminal:
+                break
+
+        return (last_screenshot, total_reward, terminal, game_over)
 
     def step(self, action):
         screenshot, reward, terminal, game_over = self.frame_step(action)
-        if game_over:
-            self.reward.reset()
-            self.trs.boot()
-            self.reset()
-        else:
-            x_t1 = skimage.transform.resize(screenshot, (84, 84))
-            x_t1 = x_t1.reshape(x_t1.shape[0], x_t1.shape[1], 1)  # 84x84x1
-            self.state = np.append(x_t1, self.state[:, :, :3], axis=2)
 
-        return self.state, reward, terminal, None
+        x_t1 = skimage.transform.resize(screenshot, (84, 84))
+        x_t1 = x_t1.reshape(x_t1.shape[0], x_t1.shape[1], 1)
+        self.state = np.append(x_t1, self.state[:, :, :3], axis=2)
 
-
+        return self.state, reward, terminal or game_over, None
 # ------------------------------------------------------------------------------------
 # The following is adopted from https://keras.io/examples/rl/deep_q_network_breakout/
 # ------------------------------------------------------------------------------------
 
-import numpy as np
-import tensorflow as tf
-from tensorflow import keras
-from tensorflow.keras import layers
-
-# Configuration paramaters for the whole setup
-seed = 42
-gamma = 0.99  # Discount factor for past rewards
-epsilon = 1.0  # Epsilon greedy parameter
-epsilon_min = 0.1  # Minimum epsilon greedy parameter
-epsilon_max = 1.0  # Maximum epsilon greedy parameter
-epsilon_interval = (
-    epsilon_max - epsilon_min
-)  # Rate at which to reduce chance of random action being taken
-batch_size = 32  # Size of batch taken from replay buffer
-max_steps_per_episode = 10000
-
-
-"""
-## Implement the Deep Q-Network
-
-This network learns an approximation of the Q-table, which is a mapping between
-the states and actions that an agent will take. For every state we'll have four
-actions, that can be taken. The environment provides the state, and the action
-is chosen by selecting the larger of the four Q-values predicted in the output layer.
-
-"""
-
-num_actions = len(config["actions"])
-
 
 def create_q_model():
-    # Network defined by the Deepmind paper
-    inputs = layers.Input(
-        shape=(
-            84,
-            84,
-            4,
-        )
-    )
-
-    # Convolutions on the frames on the screen
-    layer1 = layers.Conv2D(32, 8, strides=4, activation="relu")(inputs)
-    layer2 = layers.Conv2D(64, 4, strides=2, activation="relu")(layer1)
-    layer3 = layers.Conv2D(64, 3, strides=1, activation="relu")(layer2)
-
-    layer4 = layers.Flatten()(layer3)
-
-    layer5 = layers.Dense(512, activation="relu")(layer4)
-    action = layers.Dense(num_actions, activation="linear")(layer5)
-
-    return keras.Model(inputs=inputs, outputs=action)
-
+    inputs = layers.Input(shape=(84, 84, 4))
+    x = layers.Conv2D(32, 8, strides=4, activation="relu")(inputs)
+    x = layers.Conv2D(64, 4, strides=2, activation="relu")(x)
+    x = layers.Conv2D(64, 3, strides=1, activation="relu")(x)
+    x = layers.Flatten()(x)
+    x = layers.Dense(512, activation="relu")(x)
+    outputs = layers.Dense(len(config["actions"]), activation="linear")(x)
+    return keras.Model(inputs=inputs, outputs=outputs)
 
 def train_network(env):
-    global seed
-    global gamma
-    global epsilon
-    global epsilon_min
-    global epsilon_max
-    global epsilon_interval
-    global batch_size
-    global max_steps_per_episode
+    seed = 42
+    gamma = 0.99
+    epsilon = 1.0
+    epsilon_min = 0.1
+    epsilon_max = 1.0
+    epsilon_interval = epsilon_max - epsilon_min
+    batch_size = 32
+    max_steps_per_episode = 10000
+    min_replay_history = 10000
 
     # The first model makes the predictions for Q-values which are used to
     # make a action.
@@ -306,9 +284,8 @@ def train_network(env):
 
     state = np.array(env.reset())
 
-    while True:  # Run until solved
+    while True:
         episode_reward = 0
-        print("OUTER LOOP")
 
         for timestep in range(1, max_steps_per_episode):
             # env.render(); Adding this line would show the attempts
@@ -319,7 +296,7 @@ def train_network(env):
             # Use epsilon-greedy for exploration
             if frame_count < epsilon_random_frames or epsilon > np.random.rand(1)[0]:
                 # Take random action
-                action = np.random.choice(num_actions)
+                action = np.random.choice(len(config["actions"]))
             else:
                 # Predict action Q-values
                 # From environment state
@@ -351,7 +328,8 @@ def train_network(env):
 
             # Update every fourth frame and once batch size is over 32
             if (
-                frame_count % update_after_actions == 0
+                frame_count > min_replay_history
+                and frame_count % update_after_actions == 0
                 and len(done_history) > batch_size
             ):
 
@@ -363,9 +341,7 @@ def train_network(env):
                 state_next_sample = np.array([state_next_history[i] for i in indices])
                 rewards_sample = [rewards_history[i] for i in indices]
                 action_sample = [action_history[i] for i in indices]
-                done_sample = tf.convert_to_tensor(
-                    [float(done_history[i]) for i in indices]
-                )
+                done_sample = tf.convert_to_tensor([float(done_history[i]) for i in indices])
 
                 # Build the updated Q-values for the sampled future states
                 # Use the target model for stability
@@ -373,15 +349,10 @@ def train_network(env):
                 future_rewards = model_target.predict(state_next_sample)
                 perf.quick_end("Predict")
                 # Q value = reward + discount factor * expected future reward
-                updated_q_values = rewards_sample + gamma * tf.reduce_max(
-                    future_rewards, axis=1
-                )
-
-                # If final frame set the last value to -1
-                updated_q_values = updated_q_values * (1 - done_sample) - done_sample
+                updated_q_values = rewards_sample + gamma * tf.reduce_max(future_rewards, axis=1) * (1 - done_sample)
 
                 # Create a mask so we only calculate loss on the updated Q-values
-                masks = tf.one_hot(action_sample, num_actions)
+                masks = tf.one_hot(action_sample, len(config["actions"]))
 
                 with tf.GradientTape() as tape:
                     # Train the model on the states and updated Q-values
@@ -401,21 +372,14 @@ def train_network(env):
             if frame_count % update_target_network == 0:
                 # update the the target network with new weights
                 model_target.set_weights(model.get_weights())
-                # Log details
-                template = "running reward: {:.2f} at episode {}, frame count {}"
-                print(template.format(running_reward, episode_count, frame_count))
+                print(f"running reward: {running_reward:.2f} at episode {episode_count}, frame count {frame_count}")
 
             # Save progress and update training model
             if frame_count % 100_000 == 0:
                 name = config["name"]
-                model.save_weights(
-                    name + "-" + str(frame_count) + ".weights.h5", overwrite=True
-                )
-                print(
-                    f"==> Progress saved. Frame count: {frame_count}, Running rewards: {running_reward}"
-                )
+                model.save_weights(name + f"-{frame_count}.weights.h5", overwrite=True)
+                print(f"==> Progress saved. Frame count: {frame_count}, Running rewards: {running_reward}")
 
-            # Limit the state and reward history
             if len(rewards_history) > max_memory_length:
                 del rewards_history[:1]
                 del state_history[:1]
@@ -432,13 +396,16 @@ def train_network(env):
         if len(episode_reward_history) > 100:
             del episode_reward_history[:1]
         running_reward = np.mean(episode_reward_history)
-
+        reward_counts = {
+            "positive": sum(1 for r in rewards_history if r > 0),
+            "negative": sum(1 for r in rewards_history if r < 0),
+            "zero": sum(1 for r in rewards_history if r == 0),
+        }
+        print(f"==> Episode {episode_count}, Reward stats: {reward_counts}, Running reward: {running_reward:.2f}")
         episode_count += 1
-        print(
-            f"==> LOOP. Episode incremented to {episode_count}, Running rewards: {running_reward}"
-        )
-
-        if running_reward > 40:  # Condition to consider the task solved
+        state = np.array(env.reset())
+        
+        if running_reward > 40:
             print("Solved at episode {}!".format(episode_count))
             break
 
