@@ -196,7 +196,7 @@ class Game:
             reward, term, over = self.reward.compute()
 
             self.steps_survived += 1
-            reward += 0.001 * self.steps_survived
+            reward += min(0.001 * self.steps_survived, 0.5)
 
             total_reward += reward
             terminal = terminal or term
@@ -405,7 +405,7 @@ def train_network(env):
         episode_count += 1
         state = np.array(env.reset())
         
-        if running_reward > 40:
+        if running_reward > 200:
             print("Solved at episode {}!".format(episode_count))
             break
 
