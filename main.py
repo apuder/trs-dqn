@@ -94,7 +94,7 @@ config_cosmic = {
 }
 
 
-class RewardBreakdown:
+class RewardBreakdownOrig:
 
     default_reward = (0.0, False, False)  # (Reward, Lost life, Game Over)
 
@@ -131,6 +131,27 @@ class RewardBreakdown:
         return RewardBreakdown.default_reward
 
 
+class RewardBreakdown:
+
+    default_reward = (0.0, False, False)  # (Reward, Lost life, Game Over)
+
+    def __init__(self, ram):
+        self.ram = ram
+        self.score = 0
+
+    def reset(self):
+        self.score = 0
+        self.lives = -1
+
+    def compute(self, pc):
+        if pc == 0x52A4:
+            return RewardBreakdown.default_reward
+        if pc == 0x5d17:
+            return (-1.0, True, True)  # Game Over
+        print("Lost life\n")
+        return (-1.0, True, False) # Lost life
+
+
 config = {
     "name": "breakdown",
     "cmd": "var/breakdown.cmd",
@@ -148,7 +169,8 @@ config = {
         800000,
     ],
     "viewport": (0, 2, 64, 14),
-    "step": 50000,
+    #"step": 50000,
+    "breakpoints": [0x52A4, 0x5d17, 0x5CA4, 0x5C57],
     "actions": [None, [Key.LEFT], [Key.RIGHT], [Key.SPACE]],
     "reward": RewardBreakdown,
 }
@@ -160,12 +182,17 @@ class Game:
         self.trs = trs
         self.config = trs.config
         self.reward = self.config["reward"](trs.ram)
-        self.steps = self.config["step"]
+        self.steps = self.config.get("step", None)
+        self.breakpoints = self.config.get("breakpoints", None)
         self.actions = self.config["actions"]
-        self.action_repeat = 4  # Repeat the same action N times like DeepMind
+        self.action_repeat = 1  # Repeat the same action N times (DeepMind uses 4)
         viewport = self.config["viewport"]
         self.screenshot = Screenshot(trs.ram, viewport)
         self.steps_survived = 0
+        if self.breakpoints is not None:
+            self.trs.z80.clear_breakpoints()
+            for bp in self.breakpoints:
+                self.trs.z80.add_breakpoint(bp)
         self.reset()
 
     def reset(self):
@@ -175,7 +202,7 @@ class Game:
         self.steps_survived = 0
 
         x_t, r_0, terminal, _ = self.frame_step(0)
-        x_t = skimage.transform.resize(x_t, (84, 84))
+        #x_t = skimage.transform.resize(x_t, (84, 84))
         self.state = np.stack((x_t, x_t, x_t, x_t), axis=2)
         return self.state
 
@@ -191,9 +218,18 @@ class Game:
             if keys:
                 for key in keys:
                     self.trs.keyboard.key_down(key)
-            tstates = self.steps - self.delta_tstates
-            self.delta_tstates = self.trs.run_for_tstates(tstates)
-            reward, term, over = self.reward.compute()
+            if self.steps is not None:
+              tstates = self.steps - self.delta_tstates
+              self.delta_tstates = self.trs.run_for_tstates(tstates)
+            else:
+              pc = self.trs.resume()
+            #print(f"running reward: {running_reward:.2f} at episode {episode_count}, frame count {frame_count}")
+
+            reward, term, over = self.reward.compute(pc)
+            if term and not over:
+                self.trs.keyboard.key_down(Key.ENTER)
+                self.trs.resume()
+                self.trs.keyboard.all_keys_up()
 
             self.steps_survived += 1
             reward += min(0.001 * self.steps_survived, 0.5)
@@ -212,24 +248,28 @@ class Game:
     def step(self, action):
         screenshot, reward, terminal, game_over = self.frame_step(action)
 
-        x_t1 = skimage.transform.resize(screenshot, (84, 84))
-        x_t1 = x_t1.reshape(x_t1.shape[0], x_t1.shape[1], 1)
+        #x_t1 = skimage.transform.resize(screenshot, (84, 84))
+        x_t1 = screenshot.reshape(screenshot.shape[0], screenshot.shape[1], 1)
         self.state = np.append(x_t1, self.state[:, :, :3], axis=2)
 
-        return self.state, reward, terminal or game_over, None
+        return self.state, reward, terminal, game_over
 # ------------------------------------------------------------------------------------
 # The following is adopted from https://keras.io/examples/rl/deep_q_network_breakout/
 # ------------------------------------------------------------------------------------
 
 
 def create_q_model():
-    inputs = layers.Input(shape=(84, 84, 4))
-    x = layers.Conv2D(32, 8, strides=4, activation="relu")(inputs)
-    x = layers.Conv2D(64, 4, strides=2, activation="relu")(x)
-    x = layers.Conv2D(64, 3, strides=1, activation="relu")(x)
+    inputs = keras.Input(shape=(48, 128, 4))  # height, width, channels
+
+    x = layers.Conv2D(32, kernel_size=(8, 4), strides=(4, 2), activation="relu")(inputs)
+    x = layers.Conv2D(64, kernel_size=(4, 4), strides=(2, 2), activation="relu")(x)
+    x = layers.Conv2D(64, kernel_size=(3, 3), strides=(1, 1), activation="relu")(x)
+
     x = layers.Flatten()(x)
     x = layers.Dense(512, activation="relu")(x)
+
     outputs = layers.Dense(len(config["actions"]), activation="linear")(x)
+
     return keras.Model(inputs=inputs, outputs=outputs)
 
 def train_network(env):
@@ -313,7 +353,7 @@ def train_network(env):
             epsilon = max(epsilon, epsilon_min)
 
             # Apply the sampled action in our environment
-            state_next, reward, done, _ = env.step(action)
+            state_next, reward, terminal, game_over = env.step(action)
             state_next = np.array(state_next)
 
             episode_reward += reward
@@ -322,7 +362,7 @@ def train_network(env):
             action_history.append(action)
             state_history.append(state)
             state_next_history.append(state_next)
-            done_history.append(done)
+            done_history.append(terminal)
             rewards_history.append(reward)
             state = state_next
 
@@ -387,8 +427,8 @@ def train_network(env):
                 del action_history[:1]
                 del done_history[:1]
 
-            if done:
-                print("==> DONE")
+            if game_over:
+                print("==> Game Over")
                 break
 
         # Update running reward to check condition for solving
@@ -405,7 +445,7 @@ def train_network(env):
         episode_count += 1
         state = np.array(env.reset())
         
-        if running_reward > 200:
+        if running_reward > 10000:
             print("Solved at episode {}!".format(episode_count))
             break
 
@@ -432,7 +472,7 @@ def run(modelName, env):
             action_probs = model(state_tensor, training=False)
             # Take best action
             action = tf.argmax(action_probs[0]).numpy()
-            state, reward, done, _ = env.step(action)
+            state, reward, _, _ = env.step(action)
             state = np.array(state)
 
 
@@ -450,7 +490,7 @@ def single_step():
         trs.boot()
         game_state = Game(trs)
         while True:
-            (screenshot, reward, terminal) = game_state.frame_step(0)
+            (screenshot, reward, terminal, game_over) = game_state.frame_step(0)
             print(reward, terminal)
             sys.stdin.readline()
 

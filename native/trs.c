@@ -6,6 +6,52 @@
 #include <sys/time.h>
 #include <errno.h>
 
+
+// Breakpoint management
+#define MAX_BREAKPOINTS 16
+
+static int num_breakpoints = 0;
+static ushort breakpoints[MAX_BREAKPOINTS];
+
+int add_breakpoint(ushort addr)
+{
+    if (num_breakpoints >= MAX_BREAKPOINTS) {
+        return -1;
+    }
+    breakpoints[num_breakpoints++] = addr;
+    return 0;
+}
+
+int remove_breakpoint(ushort addr)
+{
+    for (int i = 0; i < num_breakpoints; i++) {
+        if (breakpoints[i] == addr) {
+            num_breakpoints--;
+            for (int j = i; j < num_breakpoints; j++) {
+                breakpoints[j] = breakpoints[j + 1];
+            }
+            return 0;
+        }
+    }
+    return -1;
+}
+
+void clear_breakpoints()
+{
+    num_breakpoints = 0;
+}
+
+static int check_breakpoint(ushort addr)
+{
+    for (int i = 0; i < num_breakpoints; i++) {
+        if (breakpoints[i] == addr) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+
 // Model I specs
 #define TIMER_HZ_1 40
 #define CLOCK_MHZ_1 1.77408
@@ -186,4 +232,12 @@ int z80_run_for_tstates(int tstates, int original_speed)
         }
     }
     return ctx.tstates - threshold_tstates;
+}
+
+ushort z80_resume()
+{
+  do {
+    Z80Execute(&ctx);
+  } while(!check_breakpoint(ctx.PC));
+  return ctx.PC;
 }

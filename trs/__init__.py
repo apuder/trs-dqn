@@ -35,6 +35,18 @@ class TRS():
     def run_for_tstates(self, tstates):
         return self.z80.run_for_tstates(tstates, self.original_speed)
 
+    def resume(self):
+        return self.z80.resume()
+
+    def add_breakpoint(self, address):
+        return self.z80.add_breakpoint(address)
+    
+    def remove_breakpoint(self, address):
+        return self.z80.remove_breakpoint(address)
+    
+    def clear_breakpoints(self):
+        self.z80.clear_breakpoints()
+
     def boot(self):
         self.reset()
         self.ram.restore()
