@@ -145,11 +145,17 @@ class RewardBreakdown:
 
     def compute(self, pc):
         if pc == 0x52A4:
+            new_score = self.ram.peek(0x6314) + 256 * self.ram.peek(0x6315)
+            if new_score > self.score:
+                # Score increased
+                print('Score increased')
+                self.score = new_score
+                return (1.0, False, False)
             return RewardBreakdown.default_reward
         if pc == 0x5d17:
             return (-1.0, True, True)  # Game Over
         print("Lost life\n")
-        return (-1.0, True, False) # Lost life
+        return (-8.0, True, False) # Lost life
 
 
 config = {
