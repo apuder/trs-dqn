@@ -153,8 +153,7 @@ class RewardBreakdown:
                 return (1.0, False, False)
             return RewardBreakdown.default_reward
         if pc == 0x5d17:
-            return (-1.0, True, True)  # Game Over
-        print("Lost life\n")
+            return (-1.0, False, True)  # Game Over
         return (-8.0, True, False) # Lost life
 
 
@@ -232,7 +231,7 @@ class Game:
             #print(f"running reward: {running_reward:.2f} at episode {episode_count}, frame count {frame_count}")
 
             reward, term, over = self.reward.compute(pc)
-            if term and not over:
+            if term:
                 self.trs.keyboard.key_down(Key.ENTER)
                 self.trs.resume()
                 self.trs.keyboard.all_keys_up()
@@ -478,7 +477,9 @@ def run(modelName, env):
             action_probs = model(state_tensor, training=False)
             # Take best action
             action = tf.argmax(action_probs[0]).numpy()
-            state, reward, _, _ = env.step(action)
+            state, reward, _, game_over = env.step(action)
+            if game_over:
+                break
             state = np.array(state)
 
 
