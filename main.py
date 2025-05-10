@@ -154,7 +154,7 @@ class RewardBreakdown:
             return RewardBreakdown.default_reward
         if pc == 0x5d17:
             return (-1.0, False, True)  # Game Over
-        return (-8.0, True, False) # Lost life
+        return (-1.0, True, False) # Lost life
 
 
 config = {
@@ -279,14 +279,14 @@ def create_q_model():
 
 def train_network(env):
     seed = 42
-    gamma = 0.99
+    gamma = 0.95
     epsilon = 1.0
-    epsilon_min = 0.1
+    epsilon_min = 0.05
     epsilon_max = 1.0
     epsilon_interval = epsilon_max - epsilon_min
-    batch_size = 32
+    batch_size = 64
     max_steps_per_episode = 10000
-    min_replay_history = 10000
+    min_replay_history = 5000
 
     # The first model makes the predictions for Q-values which are used to
     # make a action.
@@ -314,16 +314,16 @@ def train_network(env):
     episode_count = 0
     frame_count = 0
     # Number of frames to take random action and observe output
-    epsilon_random_frames = 50000
+    epsilon_random_frames = 30000
     # Number of frames for exploration
-    epsilon_greedy_frames = 1000000.0
+    epsilon_greedy_frames = 500000.0
     # Maximum replay length
     # Note: The Deepmind paper suggests 1000000 however this causes memory issues
-    max_memory_length = 100000
-    # Train the model after 4 actions
-    update_after_actions = 4
+    max_memory_length = 50000
+    # Train the model after 2 actions
+    update_after_actions = 2
     # How often to update the target network
-    update_target_network = 10000
+    update_target_network = 5000
     # Using huber loss for stability
     loss_function = keras.losses.Huber()
 
@@ -358,7 +358,7 @@ def train_network(env):
             epsilon = max(epsilon, epsilon_min)
 
             # Apply the sampled action in our environment
-            state_next, reward, terminal, game_over = env.step(action)
+            state_next, reward, _, game_over = env.step(action)
             state_next = np.array(state_next)
 
             episode_reward += reward
@@ -367,7 +367,7 @@ def train_network(env):
             action_history.append(action)
             state_history.append(state)
             state_next_history.append(state_next)
-            done_history.append(terminal)
+            done_history.append(game_over)
             rewards_history.append(reward)
             state = state_next
 
