@@ -142,6 +142,7 @@ class RewardBreakdown:
     def reset(self):
         self.score = 0
         self.lives = -1
+        self.ycount = 1
 
     def compute(self, pc):
         if pc == 0x52A4:
@@ -151,10 +152,17 @@ class RewardBreakdown:
                 print('Score increased')
                 self.score = new_score
                 return (1.0, False, False)
+            new_ycount = self.ram.peek(0x5ea1)
+            if new_ycount != self.ycount:
+                self.ycount = new_ycount
+                if new_ycount & 0x80: # Y count is negative, ball was reflected
+                    print('Ball reflected')
+                    return (2.0, False, False)
+                return (0.0, False, False)
             return RewardBreakdown.default_reward
         if pc == 0x5d17:
             return (-1.0, False, True)  # Game Over
-        return (-1.0, True, False) # Lost life
+        return (-0.1, True, False) # Lost life
 
 
 config = {
@@ -237,7 +245,7 @@ class Game:
                 self.trs.keyboard.all_keys_up()
 
             self.steps_survived += 1
-            reward += min(0.001 * self.steps_survived, 0.5)
+            reward += min(0.05 * self.steps_survived, 0.5)
 
             total_reward += reward
             terminal = terminal or term
@@ -281,10 +289,10 @@ def train_network(env):
     seed = 42
     gamma = 0.95
     epsilon = 1.0
-    epsilon_min = 0.05
+    epsilon_min = 0.02
     epsilon_max = 1.0
     epsilon_interval = epsilon_max - epsilon_min
-    batch_size = 64
+    batch_size = 128
     max_steps_per_episode = 10000
     min_replay_history = 5000
 
