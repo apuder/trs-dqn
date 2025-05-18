@@ -8,7 +8,7 @@ import argparse
 import skimage as skimage
 from skimage import transform, color, exposure
 from threading import Thread
-from perf_timer import PerformanceTimerImpl, PerformanceTimer
+#from perf_timer import PerformanceTimerImpl, PerformanceTimer
 
 import tensorflow as tf
 
@@ -21,7 +21,7 @@ from tensorflow.keras import layers
 import os
 import sys
 
-perf = PerformanceTimerImpl()
+#perf = PerformanceTimerImpl()
 
 
 class RewardCosmicFighter:
@@ -181,10 +181,11 @@ config = {
         1000000,
         800000,
     ],
-    "viewport": (0, 2, 64, 14),
+    "viewport": (0, 1, 64, 14),
     #"step": 50000,
     "breakpoints": [0x52A4, 0x5d17, 0x5CA4, 0x5C57],
     "actions": [None, [Key.LEFT], [Key.RIGHT], [Key.SPACE]],
+    "biased_weights": [0.25, 0.15, 0.35, 0.25],
     "reward": RewardBreakdown,
 }
 
@@ -287,12 +288,12 @@ def create_q_model():
 
 def train_network(env):
     seed = 42
-    gamma = 0.95
+    gamma = 0.99
     epsilon = 1.0
     epsilon_min = 0.02
     epsilon_max = 1.0
     epsilon_interval = epsilon_max - epsilon_min
-    batch_size = 128
+    batch_size = 32
     max_steps_per_episode = 10000
     min_replay_history = 5000
 
@@ -309,7 +310,7 @@ def train_network(env):
     """
     # In the Deepmind paper they use RMSProp however then Adam optimizer
     # improves training time
-    optimizer = keras.optimizers.Adam(learning_rate=0.00025, clipnorm=1.0)
+    optimizer = keras.optimizers.Adam(learning_rate=5e-5, clipnorm=1.0)
 
     # Experience replay buffers
     action_history = []
@@ -335,6 +336,16 @@ def train_network(env):
     # Using huber loss for stability
     loss_function = keras.losses.Huber()
 
+    action_counts = [0] * len(env.config["actions"])
+    
+    reward_stats = {
+      "bounce": 0,
+      "game_over": 0,
+      "lost_life": 0,
+      "neutral": 0,
+      "shaping": 0
+    }
+
     state = np.array(env.reset())
 
     while True:
@@ -349,17 +360,22 @@ def train_network(env):
             # Use epsilon-greedy for exploration
             if frame_count < epsilon_random_frames or epsilon > np.random.rand(1)[0]:
                 # Take random action
-                action = np.random.choice(len(config["actions"]))
+                if episode_count < 100:
+                  # for the first 100 episodes, use biased action to the right
+                  action = np.random.choice(len(env.config["actions"]), p=env.config["biased_weights"])
+                else: 
+                  action = np.random.choice(len(env.config["actions"]))
+
             else:
                 # Predict action Q-values
                 # From environment state
-                perf.quick_start()
+                #perf.quick_start()
                 state_tensor = tf.convert_to_tensor(state)
                 state_tensor = tf.expand_dims(state_tensor, 0)
                 action_probs = model(state_tensor, training=False)
                 # Take best action
                 action = tf.argmax(action_probs[0]).numpy()
-                perf.quick_end("Predict action Q-values")
+                #perf.quick_end("Predict action Q-values")
 
             # Decay probability of taking random action
             epsilon -= epsilon_interval / epsilon_greedy_frames
@@ -378,6 +394,18 @@ def train_network(env):
             done_history.append(game_over)
             rewards_history.append(reward)
             state = state_next
+
+            action_counts[action] += 1
+            if reward > 1.0:
+              reward_stats["bounce"] += 1
+            elif reward < -0.9:
+              reward_stats["game_over"] += 1
+            elif reward == 0.0:
+              reward_stats["neutral"] += 1
+            elif reward > 0:
+              reward_stats["shaping"] += 1
+            else:
+              reward_stats["lost_life"] += 1
 
             # Update every fourth frame and once batch size is over 32
             if (
@@ -398,9 +426,9 @@ def train_network(env):
 
                 # Build the updated Q-values for the sampled future states
                 # Use the target model for stability
-                perf.quick_start()
+                #perf.quick_start()
                 future_rewards = model_target.predict(state_next_sample)
-                perf.quick_end("Predict")
+                #perf.quick_end("Predict")
                 # Q value = reward + discount factor * expected future reward
                 updated_q_values = rewards_sample + gamma * tf.reduce_max(future_rewards, axis=1) * (1 - done_sample)
 
@@ -417,15 +445,19 @@ def train_network(env):
                     loss = loss_function(updated_q_values, q_action)
 
                 # Backpropagation
-                perf.quick_start()
+                #perf.quick_start()
                 grads = tape.gradient(loss, model.trainable_variables)
                 optimizer.apply_gradients(zip(grads, model.trainable_variables))
-                perf.quick_end("Back Prop")
+                #perf.quick_end("Back Prop")
 
             if frame_count % update_target_network == 0:
                 # update the the target network with new weights
                 model_target.set_weights(model.get_weights())
                 print(f"running reward: {running_reward:.2f} at episode {episode_count}, frame count {frame_count}")
+
+            if frame_count % 10000 == 0:
+                print(f"Frame {frame_count}: Action counts: {action_counts}")
+                print(f"Reward stats: {reward_stats}")
 
             # Save progress and update training model
             if frame_count % 100_000 == 0:
@@ -449,12 +481,7 @@ def train_network(env):
         if len(episode_reward_history) > 100:
             del episode_reward_history[:1]
         running_reward = np.mean(episode_reward_history)
-        reward_counts = {
-            "positive": sum(1 for r in rewards_history if r > 0),
-            "negative": sum(1 for r in rewards_history if r < 0),
-            "zero": sum(1 for r in rewards_history if r == 0),
-        }
-        print(f"==> Episode {episode_count}, Reward stats: {reward_counts}, Running reward: {running_reward:.2f}")
+        print(f"==> Episode {episode_count}, Running reward: {running_reward:.2f}, Episode reward: {episode_reward:.2f}")
         episode_count += 1
         state = np.array(env.reset())
         
