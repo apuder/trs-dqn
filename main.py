@@ -184,8 +184,8 @@ config = {
     "viewport": (0, 1, 64, 14),
     #"step": 50000,
     "breakpoints": [0x52A4, 0x5d17, 0x5CA4, 0x5C57],
-    "actions": [None, [Key.LEFT], [Key.RIGHT], [Key.SPACE]],
-    "biased_weights": [0.25, 0.15, 0.35, 0.25],
+    "actions": [None, [Key.LEFT], [Key.RIGHT]],
+    "biased_weights": [0.30, 0.30, 0.40],
     "reward": RewardBreakdown,
 }
 
