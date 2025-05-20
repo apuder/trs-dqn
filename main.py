@@ -149,14 +149,14 @@ class RewardBreakdown:
             new_score = self.ram.peek(0x6314) + 256 * self.ram.peek(0x6315)
             if new_score > self.score:
                 # Score increased
-                print('Score increased')
+                log.info('Score increased')
                 self.score = new_score
                 return (1.0, False, False)
             new_ycount = self.ram.peek(0x5ea1)
             if new_ycount != self.ycount:
                 self.ycount = new_ycount
                 if new_ycount & 0x80: # Y count is negative, ball was reflected
-                    print('Ball reflected')
+                    log.info('Ball reflected')
                     return (2.0, False, False)
                 return (0.0, False, False)
             return RewardBreakdown.default_reward
@@ -185,7 +185,7 @@ config = {
     #"step": 50000,
     "breakpoints": [0x52A4, 0x5d17, 0x5CA4, 0x5C57],
     "actions": [None, [Key.LEFT], [Key.RIGHT]],
-    "biased_weights": [0.30, 0.30, 0.40],
+    "biased_weights": [0.50, 0.10, 0.40],
     "reward": RewardBreakdown,
 }
 
@@ -245,8 +245,9 @@ class Game:
                 self.trs.resume()
                 self.trs.keyboard.all_keys_up()
 
-            self.steps_survived += 1
-            reward += min(0.05 * self.steps_survived, 0.5)
+            if not term and not over:
+                self.steps_survived += 1
+                reward += min(0.05 * self.steps_survived, 0.5)
 
             total_reward += reward
             terminal = terminal or term
@@ -453,17 +454,17 @@ def train_network(env):
             if frame_count % update_target_network == 0:
                 # update the the target network with new weights
                 model_target.set_weights(model.get_weights())
-                print(f"running reward: {running_reward:.2f} at episode {episode_count}, frame count {frame_count}")
+                log.info(f"running reward: {running_reward:.2f} at episode {episode_count}, frame count {frame_count}")
 
             if frame_count % 10000 == 0:
-                print(f"Frame {frame_count}: Action counts: {action_counts}")
-                print(f"Reward stats: {reward_stats}")
+                log.info(f"Frame {frame_count}: Action counts: {action_counts}")
+                log.info(f"Reward stats: {reward_stats}")
 
             # Save progress and update training model
             if frame_count % 100_000 == 0:
                 name = config["name"]
                 model.save_weights(name + f"-{frame_count}.weights.h5", overwrite=True)
-                print(f"==> Progress saved. Frame count: {frame_count}, Running rewards: {running_reward}")
+                log.info(f"==> Progress saved. Frame count: {frame_count}, Running rewards: {running_reward}")
 
             if len(rewards_history) > max_memory_length:
                 del rewards_history[:1]
@@ -473,7 +474,7 @@ def train_network(env):
                 del done_history[:1]
 
             if game_over:
-                print("==> Game Over")
+                log.info("==> Game Over")
                 break
 
         # Update running reward to check condition for solving
@@ -481,12 +482,12 @@ def train_network(env):
         if len(episode_reward_history) > 100:
             del episode_reward_history[:1]
         running_reward = np.mean(episode_reward_history)
-        print(f"==> Episode {episode_count}, Running reward: {running_reward:.2f}, Episode reward: {episode_reward:.2f}")
+        log.info(f"==> Episode {episode_count}, Running reward: {running_reward:.2f}, Episode reward: {episode_reward:.2f}")
         episode_count += 1
         state = np.array(env.reset())
         
         if running_reward > 10000:
-            print("Solved at episode {}!".format(episode_count))
+            log.info("Solved at episode {}!".format(episode_count))
             break
 
 
