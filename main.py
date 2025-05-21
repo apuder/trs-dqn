@@ -356,7 +356,7 @@ def train_network(env):
             # env.render(); Adding this line would show the attempts
             # of the agent in a pop up window.
             frame_count += 1
-            log.info("Frame #%d", frame_count)
+            log.info("==> Frame #%d", frame_count)
 
             # Use epsilon-greedy for exploration
             if frame_count < epsilon_random_frames or epsilon > np.random.rand(1)[0]:
@@ -454,11 +454,11 @@ def train_network(env):
             if frame_count % update_target_network == 0:
                 # update the the target network with new weights
                 model_target.set_weights(model.get_weights())
-                log.info(f"running reward: {running_reward:.2f} at episode {episode_count}, frame count {frame_count}")
+                log.info(f"==> running reward: {running_reward:.2f} at episode {episode_count}, frame count {frame_count}")
 
             if frame_count % 10000 == 0:
-                log.info(f"Frame {frame_count}: Action counts: {action_counts}")
-                log.info(f"Reward stats: {reward_stats}")
+                log.info(f"==> Frame {frame_count}: Action counts: {action_counts}")
+                log.info(f"==> Reward stats: {reward_stats}")
 
             # Save progress and update training model
             if frame_count % 100_000 == 0:
