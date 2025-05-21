@@ -162,7 +162,7 @@ class RewardBreakdown:
             return RewardBreakdown.default_reward
         if pc == 0x5d17:
             return (-1.0, False, True)  # Game Over
-        return (-0.1, True, False) # Lost life
+        return (-0.01, True, False) # Lost life
 
 
 config = {
@@ -217,7 +217,7 @@ class Game:
 
         x_t, r_0, terminal, _ = self.frame_step(0)
         #x_t = skimage.transform.resize(x_t, (84, 84))
-        self.state = np.stack((x_t, x_t, x_t, x_t), axis=2)
+        self.state = np.stack((x_t, x_t), axis=2)
         return self.state
 
     def frame_step(self, action):
@@ -265,7 +265,7 @@ class Game:
 
         #x_t1 = skimage.transform.resize(screenshot, (84, 84))
         x_t1 = screenshot.reshape(screenshot.shape[0], screenshot.shape[1], 1)
-        self.state = np.append(x_t1, self.state[:, :, :3], axis=2)
+        self.state = np.append(x_t1, self.state[:, :, :1], axis=2)
 
         return self.state, reward, terminal, game_over
 # ------------------------------------------------------------------------------------
@@ -274,7 +274,7 @@ class Game:
 
 
 def create_q_model():
-    inputs = keras.Input(shape=(48, 128, 4))  # height, width, channels
+    inputs = keras.Input(shape=(48, 128, 2))  # height, width, channels
 
     x = layers.Conv2D(32, kernel_size=(8, 4), strides=(4, 2), activation="relu")(inputs)
     x = layers.Conv2D(64, kernel_size=(4, 4), strides=(2, 2), activation="relu")(x)
