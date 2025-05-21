@@ -296,7 +296,7 @@ def train_network(env):
     epsilon_interval = epsilon_max - epsilon_min
     batch_size = 32
     max_steps_per_episode = 10000
-    min_replay_history = 5000
+    min_replay_history = 1000
 
     # The first model makes the predictions for Q-values which are used to
     # make a action.
@@ -311,7 +311,7 @@ def train_network(env):
     """
     # In the Deepmind paper they use RMSProp however then Adam optimizer
     # improves training time
-    optimizer = keras.optimizers.Adam(learning_rate=5e-5, clipnorm=1.0)
+    optimizer = keras.optimizers.Adam(learning_rate=1e-4, clipnorm=1.0)
 
     # Experience replay buffers
     action_history = []
@@ -329,11 +329,11 @@ def train_network(env):
     epsilon_greedy_frames = 500000.0
     # Maximum replay length
     # Note: The Deepmind paper suggests 1000000 however this causes memory issues
-    max_memory_length = 50000
-    # Train the model after 2 actions
-    update_after_actions = 2
+    max_memory_length = 20000
+    # Train the model after n actions
+    update_after_actions = 1
     # How often to update the target network
-    update_target_network = 5000
+    update_target_network = 2000
     # Using huber loss for stability
     loss_function = keras.losses.Huber()
 
