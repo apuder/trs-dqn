@@ -351,6 +351,7 @@ def train_network(env):
 
     while True:
         episode_reward = 0
+        last_action = 0
 
         for timestep in range(1, max_steps_per_episode):
             # env.render(); Adding this line would show the attempts
@@ -358,25 +359,30 @@ def train_network(env):
             frame_count += 1
             log.info("==> Frame #%d", frame_count)
 
-            # Use epsilon-greedy for exploration
-            if frame_count < epsilon_random_frames or epsilon > np.random.rand(1)[0]:
-                # Take random action
-                if episode_count < 100:
-                  # for the first 100 episodes, use biased action to the right
-                  action = np.random.choice(len(env.config["actions"]), p=env.config["biased_weights"])
-                else: 
-                  action = np.random.choice(len(env.config["actions"]))
-
+            if np.random.rand() < 0.25:
+              action = last_action
             else:
-                # Predict action Q-values
-                # From environment state
-                #perf.quick_start()
-                state_tensor = tf.convert_to_tensor(state)
-                state_tensor = tf.expand_dims(state_tensor, 0)
-                action_probs = model(state_tensor, training=False)
-                # Take best action
-                action = tf.argmax(action_probs[0]).numpy()
-                #perf.quick_end("Predict action Q-values")
+              # Use epsilon-greedy for exploration
+              if frame_count < epsilon_random_frames or epsilon > np.random.rand(1)[0]:
+                  # Take random action
+                  if episode_count < 100:
+                    # for the first 100 episodes, use biased action to the right
+                    action = np.random.choice(len(env.config["actions"]), p=env.config["biased_weights"])
+                  else: 
+                    action = np.random.choice(len(env.config["actions"]))
+
+              else:
+                  # Predict action Q-values
+                  # From environment state
+                  #perf.quick_start()
+                  state_tensor = tf.convert_to_tensor(state)
+                  state_tensor = tf.expand_dims(state_tensor, 0)
+                  action_probs = model(state_tensor, training=False)
+                  # Take best action
+                  action = tf.argmax(action_probs[0]).numpy()
+                  #perf.quick_end("Predict action Q-values")
+
+            last_action = action
 
             # Decay probability of taking random action
             epsilon -= epsilon_interval / epsilon_greedy_frames
