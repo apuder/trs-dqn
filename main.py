@@ -245,9 +245,9 @@ class Game:
                 self.trs.resume()
                 self.trs.keyboard.all_keys_up()
 
-            if not term and not over:
-                self.steps_survived += 1
-                reward += min(0.05 * self.steps_survived, 0.5)
+            #if not term and not over:
+            #    self.steps_survived += 1
+            #    reward += min(0.05 * self.steps_survived, 0.5)
 
             total_reward += reward
             terminal = terminal or term
