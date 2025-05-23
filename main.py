@@ -182,7 +182,7 @@ config = {
         1000000,
         800000,
     ],
-    "viewport": (0, 1, 64, 14),
+    "viewport": (0, 1, 64, 15),
     #"step": 50000,
     "breakpoints": [0x52A4, 0x5d17, 0x5CA4, 0x5C57],
     "actions": [None, [Key.LEFT], [Key.RIGHT]],
