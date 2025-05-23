@@ -162,7 +162,8 @@ class RewardBreakdown:
             return RewardBreakdown.default_reward
         if pc == 0x5d17:
             return (-1.0, False, True)  # Game Over
-        return (-0.01, True, False) # Lost life
+        # Breakpoints 0x5CA4, 0x5C57 indicate that the player lost a life
+        return (-1.0, True, False) # Lost life
 
 
 config = {
@@ -324,9 +325,9 @@ def train_network(env):
     episode_count = 0
     frame_count = 0
     # Number of frames to take random action and observe output
-    epsilon_random_frames = 30000
+    epsilon_random_frames = 5000
     # Number of frames for exploration
-    epsilon_greedy_frames = 500000.0
+    epsilon_greedy_frames = 200000.0
     # Maximum replay length
     # Note: The Deepmind paper suggests 1000000 however this causes memory issues
     max_memory_length = 20000
