@@ -292,7 +292,7 @@ def train_network(env):
     seed = 42
     gamma = 0.95
     epsilon = 1.0
-    epsilon_min = 0.02
+    epsilon_min = 0.05
     epsilon_max = 1.0
     epsilon_interval = epsilon_max - epsilon_min
     batch_size = 64
@@ -327,7 +327,7 @@ def train_network(env):
     # Number of frames to take random action and observe output
     epsilon_random_frames = 5000
     # Number of frames for exploration
-    epsilon_greedy_frames = 600000.0
+    epsilon_greedy_frames = 750000.0
     # Maximum replay length
     # Note: The Deepmind paper suggests 1000000 however this causes memory issues
     max_memory_length = 20000
