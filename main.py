@@ -18,6 +18,7 @@ import numpy as np
 import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers
+from tensorflow.keras.optimizers.schedules import CosineDecayRestarts
 import os
 import sys
 
@@ -312,7 +313,16 @@ def train_network(env):
     """
     # In the Deepmind paper they use RMSProp however then Adam optimizer
     # improves training time
-    optimizer = keras.optimizers.Adam(learning_rate=1e-4, clipnorm=1.0)
+    steps_per_cycle = 200_000
+    lr_schedule = CosineDecayRestarts(
+        initial_learning_rate=3e-4,
+        first_decay_steps=steps_per_cycle,
+        t_mul=1.5,
+        m_mul=0.9,
+        alpha=0.10
+    )
+    optimizer = keras.optimizers.Adam(learning_rate=lr_schedule, clipnorm=1.0)
+    #optimizer = keras.optimizers.Adam(learning_rate=1e-4, clipnorm=1.0)
 
     # Experience replay buffers
     action_history = []
