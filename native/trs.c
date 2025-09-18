@@ -234,10 +234,15 @@ int z80_run_for_tstates(int tstates, int original_speed)
     return ctx.tstates - threshold_tstates;
 }
 
-ushort z80_resume()
+ushort z80_resume(int original_speed)
 {
+  int current_tstates = ctx.tstates;
   do {
     Z80Execute(&ctx);
+    if (original_speed && (ctx.tstates - current_tstates >= CYCLES_PER_TIMER)) {
+        sync_time_with_host();
+        current_tstates = ctx.tstates;
+    }
   } while(!check_breakpoint(ctx.PC));
   return ctx.PC;
 }

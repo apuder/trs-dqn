@@ -52,7 +52,7 @@ class Z80():
         wrapper.z80_run.argtypes = (ctypes.c_ushort,)
         wrapper.z80_run_for_tstates.argtypes = (ctypes.c_int, ctypes.c_int)
         wrapper.z80_run_for_tstates.restype = ctypes.c_int
-        wrapper.z80_resume.argtypes = ()
+        wrapper.z80_resume.argtypes = (ctypes.c_int,)
         wrapper.z80_resume.restype = ctypes.c_ushort
 
     def reset(self, entry_addr):
@@ -64,8 +64,8 @@ class Z80():
     def run(self, entry_addr):
         wrapper.z80_run(entry_addr)
 
-    def resume(self):
-        return wrapper.z80_resume()
+    def resume(self, original_speed):
+        return wrapper.z80_resume(original_speed)
     
     def add_breakpoint(self, address):
         return wrapper.add_breakpoint(address)

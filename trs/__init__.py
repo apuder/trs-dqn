@@ -36,7 +36,7 @@ class TRS():
         return self.z80.run_for_tstates(tstates, self.original_speed)
 
     def resume(self):
-        return self.z80.resume()
+        return self.z80.resume(self.original_speed)
 
     def add_breakpoint(self, address):
         return self.z80.add_breakpoint(address)
