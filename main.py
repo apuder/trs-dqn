@@ -311,19 +311,6 @@ def train_network(env):
     """
     ## Train
     """
-    # In the Deepmind paper they use RMSProp however then Adam optimizer
-    # improves training time
-    steps_per_cycle = 200_000
-    lr_schedule = CosineDecayRestarts(
-        initial_learning_rate=3e-4,
-        first_decay_steps=steps_per_cycle,
-        t_mul=1.5,
-        m_mul=0.9,
-        alpha=0.10
-    )
-    optimizer = keras.optimizers.Adam(learning_rate=lr_schedule, clipnorm=1.0)
-    #optimizer = keras.optimizers.Adam(learning_rate=1e-4, clipnorm=1.0)
-
     # Experience replay buffers
     action_history = []
     state_history = []
@@ -347,6 +334,17 @@ def train_network(env):
     update_target_network = 1000
     # Using huber loss for stability
     loss_function = keras.losses.Huber()
+
+    # In the Deepmind paper they use RMSProp however then Adam optimizer
+    # improves training time
+    steps_per_cycle = 200_000
+    updates_per_frame = 1.0
+    U = max(0, epsilon_greedy_frames - min_replay_history) * updates_per_frame
+    first_decay_steps = int(0.35 * U)
+    lr_schedule = tf.keras.optimizers.schedules.CosineDecayRestarts(
+           initial_learning_rate=3e-4, first_decay_steps=first_decay_steps,
+           t_mul=1.5, m_mul=0.9, alpha=0.10)
+    optimizer = tf.keras.optimizers.Adam(learning_rate=lr_schedule, clipnorm=1.0)
 
     action_counts = [0] * len(env.config["actions"])
     
