@@ -298,7 +298,7 @@ def train_network(env):
     epsilon_interval = epsilon_max - epsilon_min
     batch_size = 64
     max_steps_per_episode = 10000
-    min_replay_history = 1000
+    min_replay_history = 10_000
 
     # The first model makes the predictions for Q-values which are used to
     # make a action.
@@ -322,7 +322,7 @@ def train_network(env):
     episode_count = 0
     frame_count = 0
     # Number of frames to take random action and observe output
-    epsilon_random_frames = 5000
+    epsilon_random_frames = 10_000
     # Number of frames for exploration
     epsilon_greedy_frames = 750000.0
     # Maximum replay length
@@ -331,7 +331,7 @@ def train_network(env):
     # Train the model after n actions
     update_after_actions = 1
     # How often to update the target network
-    update_target_network = 1000
+    update_target_network = 2_000
     # Using huber loss for stability
     loss_function = keras.losses.Huber()
 
@@ -339,11 +339,21 @@ def train_network(env):
     # improves training time
     steps_per_cycle = 200_000
     updates_per_frame = 1.0
-    U = max(0, epsilon_greedy_frames - min_replay_history) * updates_per_frame
-    first_decay_steps = int(0.35 * U)
+    U = max(0, (epsilon_greedy_frames - max(min_replay_history, epsilon_random_frames))) * updates_per_frame
+
+    initial_lr        = 1e-4            # was 3e-4 (safer early; avoids “no-move” basin)
+    first_decay_steps = int(0.45 * U)   # was int(0.35 * U) (cool a bit later)
+    t_mul             = 1.4             # gentler stretch per cycle
+    m_mul             = 0.9             # keep restart peaks modest (not full reset)
+    alpha             = 0.20            # higher floor (prevents freezing)
+
     lr_schedule = tf.keras.optimizers.schedules.CosineDecayRestarts(
-           initial_learning_rate=3e-4, first_decay_steps=first_decay_steps,
-           t_mul=1.5, m_mul=0.9, alpha=0.10)
+        initial_learning_rate=initial_lr,
+        first_decay_steps=first_decay_steps,
+        t_mul=t_mul,
+        m_mul=m_mul,
+        alpha=alpha
+    )
     optimizer = tf.keras.optimizers.Adam(learning_rate=lr_schedule, clipnorm=1.0)
 
     action_counts = [0] * len(env.config["actions"])
