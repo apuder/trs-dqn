@@ -19,8 +19,8 @@ import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers
 from tensorflow.keras.optimizers.schedules import CosineDecayRestarts
-import os
-import sys
+import csv, os, time, math, sys
+
 
 #perf = PerformanceTimerImpl()
 
@@ -150,14 +150,14 @@ class RewardBreakdown:
             new_score = self.ram.peek(0x6314) + 256 * self.ram.peek(0x6315)
             if new_score > self.score:
                 # Score increased
-                log.info('Score increased')
+                #log.info('Score increased')
                 self.score = new_score
                 return (1.0, False, False)
             new_ycount = self.ram.peek(0x5ea1)
             if new_ycount != self.ycount:
                 self.ycount = new_ycount
                 if new_ycount & 0x80: # Y count is negative, ball was reflected
-                    log.info('Ball reflected')
+                    #log.info('Ball reflected')
                     return (2.0, False, False)
                 return (0.0, False, False)
             return RewardBreakdown.default_reward
@@ -358,6 +358,7 @@ def train_network(env):
 
     action_counts = [0] * len(env.config["actions"])
     
+    # ---------- CSV LOGGING SETUP ----------
     reward_stats = {
       "bounce": 0,
       "game_over": 0,
@@ -365,6 +366,139 @@ def train_network(env):
       "neutral": 0,
       "shaping": 0
     }
+    csv_path = "logs.csv"
+    csv_fields = [
+        # bookkeeping
+        "event", "wall_time_s", "frame", "updates",
+        # schedules
+        "epsilon", "lr",
+        # optimizer / td update
+        "td_loss", "td_ema", "grad_norm",
+        "target_mean", "target_std", "target_min", "target_max",
+        "q_action_mean", "q_action_std",
+        # action selection (cumulative)
+        "action0_count", "action1_count", "action2_count",
+        "path_stick", "path_rand_biased", "path_rand", "path_greedy",
+        # replay tail (last ~10k frames or all if smaller)
+        "reward_mean", "reward_std", "reward_p10", "reward_p50", "reward_p90", "term_ratio",
+        # reward counters (cumulative)
+        "r_bounce", "r_game_over", "r_lost_life", "r_neutral", "r_shaping",
+        # probe set (fixed 256 samples once buffer is warm)
+        "probe_online_mean", "probe_online_std",
+        "probe_target_mean", "probe_target_std",
+        "probe_gap_mean",
+        "probe_argmax_0", "probe_argmax_1", "probe_argmax_2",
+    ]
+    csv_file = open(csv_path, "w", newline="")
+    csv_writer = csv.DictWriter(csv_file, fieldnames=csv_fields)
+    csv_writer.writeheader()
+    csv_file.flush()
+
+    # --- rolling diagnostics state ---
+    td_ema = None
+    last_td = math.nan
+    last_gn = math.nan
+    last_t_mean = last_t_std = last_t_min = last_t_max = [math.nan]*4
+    last_q_mean = last_q_std = math.nan
+
+    # action-path attribution (counts are cumulative)
+    action_path = {"stick": 0, "rand_biased": 0, "rand": 0, "greedy": 0}
+
+    # fixed probe set will be created once when buffer is warm
+    probe_states = None
+    probe_stats = {
+        "on_mean": math.nan, "on_std": math.nan,
+        "tg_mean": math.nan, "tg_std": math.nan,
+        "gap": math.nan, "argmax": [0]*len(config["actions"])
+    }
+
+    def _replay_tail_stats():
+        # last ~10k rewards (or all if shorter)
+        rh = rewards_history[-10000:] if len(rewards_history) > 10000 else rewards_history
+        dh = done_history[-10000:]     if len(done_history)     > 10000 else done_history
+        if len(rh) == 0:
+            return (math.nan, math.nan, math.nan, math.nan, math.nan, math.nan)
+        import numpy as np
+        r = np.array(rh, dtype=np.float32)
+        d = np.array(dh, dtype=np.float32)
+        return (float(r.mean()), float(r.std()),
+                float(np.percentile(r, 10)), float(np.median(r)), float(np.percentile(r, 90)),
+                float(d.mean()))
+
+    def _emit_csv_row(event_label):
+        # optimizer state
+        updates = int(optimizer.iterations.numpy()) if hasattr(optimizer, "iterations") else 0
+        # current LR (schedule evaluated at step=updates)
+        try:
+            curr_lr = float(optimizer.learning_rate(updates).numpy())
+        except Exception:
+            try:
+                curr_lr = float(optimizer.learning_rate.numpy())
+            except Exception:
+                curr_lr = math.nan
+
+        # action counts (3 actions in your config)
+        a0 = action_counts[0] if len(action_counts) > 0 else 0
+        a1 = action_counts[1] if len(action_counts) > 1 else 0
+        a2 = action_counts[2] if len(action_counts) > 2 else 0
+
+        # replay tail snapshot
+        r_mean, r_std, r_p10, r_p50, r_p90, term_ratio = _replay_tail_stats()
+
+        # event: "update" (every ~500 optimizer steps) or "tick" (every 10k frames)
+        # wall_time_s: time.time() at log moment
+        # frame, updates: env frames and optimizer iterations
+        # epsilon, lr: current ε and evaluated learning rate
+        # td_loss, td_ema, grad_norm: current TD loss, EMA(0.99), and global grad-norm
+        # target_mean/std/min/max: stats of Bellman targets in the last update batch
+        # q_action_mean/std: stats of the Q(s,a) selected by the batch actions
+        # action0/1/2_count: cumulative action counts
+        # path_stick/rand_biased/rand/greedy: cumulative action-path attributions
+        # reward_mean/std/p10/p50/p90, term_ratio: replay tail (last ~10k)
+        # r_bounce / r_game_over / r_lost_life / r_neutral / r_shaping: reward counters
+        # probe_online_mean/std / probe_target_mean/std / probe_gap_mean: value calibration on the fixed probe set
+        # probe_argmax_0/1/2: action distribution of the online net on the probe set
+        row = {
+            "event": event_label,
+            "wall_time_s": time.time(),
+            "frame": frame_count,
+            "updates": updates,
+            "epsilon": float(epsilon),
+            "lr": curr_lr,
+            "td_loss": last_td,
+            "td_ema": (float(td_ema) if td_ema is not None else math.nan),
+            "grad_norm": last_gn,
+            "target_mean": last_t_mean,
+            "target_std": last_t_std,
+            "target_min": last_t_min,
+            "target_max": last_t_max,
+            "q_action_mean": last_q_mean,
+            "q_action_std": last_q_std,
+            "action0_count": a0, "action1_count": a1, "action2_count": a2,
+            "path_stick": action_path["stick"],
+            "path_rand_biased": action_path["rand_biased"],
+            "path_rand": action_path["rand"],
+            "path_greedy": action_path["greedy"],
+            "reward_mean": r_mean, "reward_std": r_std,
+            "reward_p10": r_p10, "reward_p50": r_p50, "reward_p90": r_p90,
+            "term_ratio": term_ratio,
+            "r_bounce": reward_stats["bounce"],
+            "r_game_over": reward_stats["game_over"],
+            "r_lost_life": reward_stats["lost_life"],
+            "r_neutral": reward_stats["neutral"],
+            "r_shaping": reward_stats["shaping"],
+            "probe_online_mean": probe_stats["on_mean"],
+            "probe_online_std": probe_stats["on_std"],
+            "probe_target_mean": probe_stats["tg_mean"],
+            "probe_target_std": probe_stats["tg_std"],
+            "probe_gap_mean": probe_stats["gap"],
+            "probe_argmax_0": probe_stats["argmax"][0] if len(probe_stats["argmax"]) > 0 else 0,
+            "probe_argmax_1": probe_stats["argmax"][1] if len(probe_stats["argmax"]) > 1 else 0,
+            "probe_argmax_2": probe_stats["argmax"][2] if len(probe_stats["argmax"]) > 2 else 0,
+        }
+        csv_writer.writerow(row)
+        csv_file.flush()
+    # --------------------------------------
 
     state = np.array(env.reset())
 
@@ -376,10 +510,11 @@ def train_network(env):
             # env.render(); Adding this line would show the attempts
             # of the agent in a pop up window.
             frame_count += 1
-            log.info("==> Frame #%d", frame_count)
+            #log.info("==> Frame #%d", frame_count)
 
             if np.random.rand() < 0.25:
               action = last_action
+              action_path["stick"] += 1
             else:
               # Use epsilon-greedy for exploration
               if frame_count < epsilon_random_frames or epsilon > np.random.rand(1)[0]:
@@ -387,8 +522,10 @@ def train_network(env):
                   if episode_count < 100:
                     # for the first 100 episodes, use biased action to the right
                     action = np.random.choice(len(env.config["actions"]), p=env.config["biased_weights"])
+                    action_path["rand_biased"] += 1
                   else: 
                     action = np.random.choice(len(env.config["actions"]))
+                    action_path["rand"] += 1
 
               else:
                   # Predict action Q-values
@@ -400,6 +537,7 @@ def train_network(env):
                   # Take best action
                   action = tf.argmax(action_probs[0]).numpy()
                   #perf.quick_end("Predict action Q-values")
+                  action_path["greedy"] += 1
 
             last_action = action
 
@@ -472,24 +610,51 @@ def train_network(env):
 
                 # Backpropagation
                 #perf.quick_start()
+                last_td = float(loss.numpy())
+                td_ema = last_td if td_ema is None else (0.99 * td_ema + 0.01 * last_td)
                 grads = tape.gradient(loss, model.trainable_variables)
+                last_gn = float(tf.linalg.global_norm(grads).numpy())
                 optimizer.apply_gradients(zip(grads, model.trainable_variables))
                 #perf.quick_end("Back Prop")
+                uq = np.asarray(updated_q_values, dtype=np.float32)
+                qa = np.asarray(q_action.numpy(), dtype=np.float32)
+                last_t_mean, last_t_std, last_t_min, last_t_max = float(uq.mean()), float(uq.std()), float(uq.min()), float(uq.max())
+                last_q_mean, last_q_std = float(qa.mean()), float(qa.std())
+
+                # emit a CSV row every 500 optimizer updates
+                if int(optimizer.iterations.numpy()) % 500 == 0:
+                    _emit_csv_row("update")
 
             if frame_count % update_target_network == 0:
                 # update the the target network with new weights
                 model_target.set_weights(model.get_weights())
-                log.info(f"==> running reward: {running_reward:.2f} at episode {episode_count}, frame count {frame_count}")
+                #log.info(f"==> running reward: {running_reward:.2f} at episode {episode_count}, frame count {frame_count}")
 
+            # Build a fixed probe set once (after buffer warms up)
+            if probe_states is None and len(state_history) > 2000:
+                idx = np.random.choice(range(len(state_history)), size=256, replace=False)
+                probe_states = np.array([state_history[i] for i in idx])
+
+            # Every 10k frames: evaluate probe, emit a CSV "tick"
             if frame_count % 10000 == 0:
-                log.info(f"==> Frame {frame_count}: Action counts: {action_counts}")
-                log.info(f"==> Reward stats: {reward_stats}")
+                if probe_states is not None:
+                    qs_online = model.predict(probe_states, verbose=0)
+                    qs_target = model_target.predict(probe_states, verbose=0)
+                    a_online = np.argmax(qs_online, axis=1)
+                    probe_stats["on_mean"] = float(qs_online.mean())
+                    probe_stats["on_std"]  = float(qs_online.std())
+                    probe_stats["tg_mean"] = float(qs_target.mean())
+                    probe_stats["tg_std"]  = float(qs_target.std())
+                    probe_stats["gap"]     = float(np.mean(np.abs(qs_online - qs_target)))
+                    probe_stats["argmax"]  = np.bincount(a_online, minlength=len(config["actions"])).tolist()
+
+                _emit_csv_row("tick")
 
             # Save progress and update training model
             if frame_count % 100_000 == 0:
                 name = config["name"]
                 model.save_weights(name + f"-{frame_count}.weights.h5", overwrite=True)
-                log.info(f"==> Progress saved. Frame count: {frame_count}, Running rewards: {running_reward}")
+                #log.info(f"==> Progress saved. Frame count: {frame_count}, Running rewards: {running_reward}")
 
             if len(rewards_history) > max_memory_length:
                 del rewards_history[:1]
@@ -499,7 +664,7 @@ def train_network(env):
                 del done_history[:1]
 
             if game_over:
-                log.info("==> Game Over")
+                #log.info("==> Game Over")
                 break
 
         # Update running reward to check condition for solving
@@ -507,12 +672,12 @@ def train_network(env):
         if len(episode_reward_history) > 100:
             del episode_reward_history[:1]
         running_reward = np.mean(episode_reward_history)
-        log.info(f"==> Episode {episode_count}, Running reward: {running_reward:.2f}, Episode reward: {episode_reward:.2f}")
+        #log.info(f"==> Episode {episode_count}, Running reward: {running_reward:.2f}, Episode reward: {episode_reward:.2f}")
         episode_count += 1
         state = np.array(env.reset())
         
         if running_reward > 10000:
-            log.info("Solved at episode {}!".format(episode_count))
+            #log.info("Solved at episode {}!".format(episode_count))
             break
 
 
