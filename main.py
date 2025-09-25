@@ -625,11 +625,6 @@ def train_network(env):
                 if int(optimizer.iterations.numpy()) % 500 == 0:
                     _emit_csv_row("update")
 
-            if frame_count % update_target_network == 0:
-                # update the the target network with new weights
-                model_target.set_weights(model.get_weights())
-                #log.info(f"==> running reward: {running_reward:.2f} at episode {episode_count}, frame count {frame_count}")
-
             # Build a fixed probe set once (after buffer warms up)
             if probe_states is None and len(state_history) > 2000:
                 idx = np.random.choice(range(len(state_history)), size=256, replace=False)
@@ -649,6 +644,11 @@ def train_network(env):
                     probe_stats["argmax"]  = np.bincount(a_online, minlength=len(config["actions"])).tolist()
 
                 _emit_csv_row("tick")
+
+            if frame_count % update_target_network == 0:
+                # update the the target network with new weights
+                model_target.set_weights(model.get_weights())
+                #log.info(f"==> running reward: {running_reward:.2f} at episode {episode_count}, frame count {frame_count}")
 
             # Save progress and update training model
             if frame_count % 100_000 == 0:
