@@ -18,7 +18,7 @@ import numpy as np
 import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers
-from tensorflow.keras.optimizers.schedules import CosineDecayRestarts
+from tensorflow.keras.optimizers.schedules import CosineDecayRestarts, LearningRateSchedule
 import csv, os, time, math, sys
 
 
@@ -335,26 +335,41 @@ def train_network(env):
     # Using huber loss for stability
     loss_function = keras.losses.Huber()
 
-    # In the Deepmind paper they use RMSProp however then Adam optimizer
-    # improves training time
-    steps_per_cycle = 200_000
-    updates_per_frame = 1.0
-    U = max(0, (epsilon_greedy_frames - max(min_replay_history, epsilon_random_frames))) * updates_per_frame
+    # --- Learning rate: hold at 1e-4 until ε <= 0.5, then cosine restarts on *update* steps ---
+    class HoldThenCosine(LearningRateSchedule):
+        """Keeps LR flat at `initial_lr` until `start_update` is set, then runs a wrapped schedule
+        using (step - start_update) as the phase."""
+        def __init__(self, initial_lr, inner_sched):
+            self.initial_lr = tf.convert_to_tensor(initial_lr, tf.float32)
+            self.inner_sched = inner_sched
+            # Large sentinel so we 'hold' until explicitly started
+            self.start_update = tf.Variable(2**31 - 1, dtype=tf.int64, trainable=False)
+        def start_at(self, update_step: int):
+            self.start_update.assign(tf.cast(update_step, tf.int64))
+        def __call__(self, step):
+            step = tf.cast(step, tf.int64)
+            offset = tf.maximum(0, step - self.start_update)
+            # CosineDecayRestarts accepts numeric steps; cast offset for safety
+            lr_cos = tf.cast(self.inner_sched(tf.cast(offset, tf.float32)), tf.float32)
+            return tf.where(step < self.start_update, self.initial_lr, lr_cos)
+        def get_config(self):
+            # Minimal config to satisfy Keras serialization if needed
+            return {"initial_lr": float(self.initial_lr.numpy())}
 
-    initial_lr        = 1e-4            # was 3e-4 (safer early; avoids “no-move” basin)
-    first_decay_steps = int(0.45 * U)   # was int(0.35 * U) (cool a bit later)
-    t_mul             = 1.4             # gentler stretch per cycle
-    m_mul             = 0.9             # keep restart peaks modest (not full reset)
-    alpha             = 0.20            # higher floor (prevents freezing)
 
-    lr_schedule = tf.keras.optimizers.schedules.CosineDecayRestarts(
+    initial_lr = 1e-4
+    # Key the cosine cycle length to *updates*, not frames
+    updates_per_frame = 1.0 / update_after_actions
+    U_updates = max(0, (epsilon_greedy_frames - max(min_replay_history, epsilon_random_frames))) * updates_per_frame
+    first_decay_steps = int(0.65 * U_updates)
+    cosine_inner = CosineDecayRestarts(
         initial_learning_rate=initial_lr,
         first_decay_steps=first_decay_steps,
-        t_mul=t_mul,
-        m_mul=m_mul,
-        alpha=alpha
+        t_mul=1.4, m_mul=0.9, alpha=0.30
     )
+    lr_schedule = HoldThenCosine(initial_lr, cosine_inner)
     optimizer = tf.keras.optimizers.Adam(learning_rate=lr_schedule, clipnorm=1.0)
+    cosine_started = False
 
     action_counts = [0] * len(env.config["actions"])
     
@@ -388,6 +403,7 @@ def train_network(env):
         "probe_target_mean", "probe_target_std",
         "probe_gap_mean",
         "probe_argmax_0", "probe_argmax_1", "probe_argmax_2",
+        "target_sync_updates",
     ]
     csv_file = open(csv_path, "w", newline="")
     csv_writer = csv.DictWriter(csv_file, fieldnames=csv_fields)
@@ -406,6 +422,8 @@ def train_network(env):
 
     # fixed probe set will be created once when buffer is warm
     probe_states = None
+    # last observed optimizer-step at which we synced target
+    last_target_sync_updates = -1
     probe_stats = {
         "on_mean": math.nan, "on_std": math.nan,
         "tg_mean": math.nan, "tg_std": math.nan,
@@ -428,14 +446,17 @@ def train_network(env):
     def _emit_csv_row(event_label):
         # optimizer state
         updates = int(optimizer.iterations.numpy()) if hasattr(optimizer, "iterations") else 0
-        # current LR (schedule evaluated at step=updates)
-        try:
-            curr_lr = float(optimizer.learning_rate(updates).numpy())
-        except Exception:
+        # current LR
+        try:  # preferred when using lr_var
+            curr_lr = float(lr_var.numpy())
+        except Exception:  # fallback for schedule-based LR
             try:
-                curr_lr = float(optimizer.learning_rate.numpy())
+                curr_lr = float(optimizer.learning_rate(updates).numpy())
             except Exception:
-                curr_lr = math.nan
+                try:
+                    curr_lr = float(optimizer.learning_rate.numpy())
+                except Exception:
+                    curr_lr = math.nan
 
         # action counts (3 actions in your config)
         a0 = action_counts[0] if len(action_counts) > 0 else 0
@@ -495,6 +516,7 @@ def train_network(env):
             "probe_argmax_0": probe_stats["argmax"][0] if len(probe_stats["argmax"]) > 0 else 0,
             "probe_argmax_1": probe_stats["argmax"][1] if len(probe_stats["argmax"]) > 1 else 0,
             "probe_argmax_2": probe_stats["argmax"][2] if len(probe_stats["argmax"]) > 2 else 0,
+            "target_sync_updates": last_target_sync_updates,
         }
         csv_writer.writerow(row)
         csv_file.flush()
@@ -544,6 +566,16 @@ def train_network(env):
             # Decay probability of taking random action
             epsilon -= epsilon_interval / epsilon_greedy_frames
             epsilon = max(epsilon, epsilon_min)
+            # Start cosine schedule the moment ε <= 0.5 (once), keyed to optimizer updates
+            if (not cosine_started) and (epsilon <= 0.5):
+                cosine_started = True
+                lr_schedule.start_at(int(optimizer.iterations.numpy()))
+            # (No per-step LR assignments needed; optimizer reads from lr_schedule(step))
+
+            # --- LR control: flat until epsilon <= 0.5, then cosine restarts keyed to updates ---
+            if not cosine_started and epsilon <= 0.5:
+                cosine_started = True
+                cosine_start_updates = int(optimizer.iterations.numpy())
 
             # Apply the sampled action in our environment
             state_next, reward, _, game_over = env.step(action)
@@ -631,7 +663,7 @@ def train_network(env):
                 probe_states = np.array([state_history[i] for i in idx])
 
             # Every 10k frames: evaluate probe, emit a CSV "tick"
-            if frame_count % 10000 == 0:
+            if frame_count % 100 == 0:
                 if probe_states is not None:
                     qs_online = model.predict(probe_states, verbose=0)
                     qs_target = model_target.predict(probe_states, verbose=0)
@@ -646,9 +678,10 @@ def train_network(env):
                 _emit_csv_row("tick")
 
             if frame_count % update_target_network == 0:
-                # update the the target network with new weights
+                # update the target network *after* logging so probe_gap reflects pre-sync drift
                 model_target.set_weights(model.get_weights())
-                #log.info(f"==> running reward: {running_reward:.2f} at episode {episode_count}, frame count {frame_count}")
+                last_target_sync_updates = int(optimizer.iterations.numpy())
+                _emit_csv_row("target_sync")
 
             # Save progress and update training model
             if frame_count % 100_000 == 0:
