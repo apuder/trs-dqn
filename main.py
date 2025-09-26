@@ -663,7 +663,7 @@ def train_network(env):
                 probe_states = np.array([state_history[i] for i in idx])
 
             # Every 10k frames: evaluate probe, emit a CSV "tick"
-            if frame_count % 100 == 0:
+            if frame_count % 10000 == 0:
                 if probe_states is not None:
                     qs_online = model.predict(probe_states, verbose=0)
                     qs_target = model_target.predict(probe_states, verbose=0)
