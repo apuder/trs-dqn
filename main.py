@@ -17,7 +17,7 @@ from absl import logging as log
 import numpy as np
 import tensorflow as tf
 from tensorflow import keras
-from tensorflow.keras import layers
+from keras import layers, ops, Input, Model
 from tensorflow.keras.optimizers.schedules import CosineDecayRestarts, LearningRateSchedule
 import csv, os, time, math, sys
 
@@ -201,7 +201,7 @@ class Game:
         self.steps = self.config.get("step", None)
         self.breakpoints = self.config.get("breakpoints", None)
         self.actions = self.config["actions"]
-        self.action_repeat = 1  # Repeat the same action N times (DeepMind uses 4)
+        self.action_repeat = 2  # Repeat the same action N times (DeepMind uses 4)
         viewport = self.config["viewport"]
         self.screenshot = Screenshot(trs.ram, viewport)
         self.steps_survived = 0
@@ -276,16 +276,24 @@ class Game:
 
 
 def create_q_model():
-    inputs = keras.Input(shape=(48, 128, 3))  # height, width, channels
+    num_actions = len(config["actions"])
 
-    x = layers.Conv2D(32, kernel_size=(8, 4), strides=(4, 2), activation="relu")(inputs)
-    x = layers.Conv2D(64, kernel_size=(4, 4), strides=(2, 2), activation="relu")(x)
-    x = layers.Conv2D(64, kernel_size=(3, 3), strides=(1, 1), activation="relu")(x)
+    inputs = Input(shape=(48, 128, 3))
 
+    x = layers.Conv2D(32, (8, 4), strides=(4, 2), activation="relu")(inputs)
+    x = layers.Conv2D(64, (4, 4), strides=(2, 2), activation="relu")(x)
+    x = layers.Conv2D(64, (3, 3), strides=(1, 1), activation="relu")(x)
     x = layers.Flatten()(x)
-    x = layers.Dense(512, activation="relu")(x)
+    x = layers.Dense(256, activation="relu")(x)
 
-    outputs = layers.Dense(len(config["actions"]), activation="linear")(x)
+    V = layers.Dense(1, name="V")(x)                  # (B, 1)
+    A = layers.Dense(num_actions, name="A")(x)        # (B, A)
+
+    mean_A = ops.mean(A, axis=1, keepdims=True)       # (B, 1)  Keras-native
+    A_centered = layers.Subtract(name="A_centered")([A, mean_A])  # (B, A)
+
+    # Broadcasting (B,1) + (B,A) works with Keras ops
+    outputs = layers.Add(name="Q")([V, A_centered])   # (B, A)
 
     return keras.Model(inputs=inputs, outputs=outputs)
 
@@ -298,7 +306,7 @@ def train_network(env):
     epsilon_interval = epsilon_max - epsilon_min
     batch_size = 64
     max_steps_per_episode = 10000
-    min_replay_history = 10_000
+    min_replay_history = 2_000
 
     # The first model makes the predictions for Q-values which are used to
     # make a action.
@@ -578,7 +586,7 @@ def train_network(env):
                 cosine_start_updates = int(optimizer.iterations.numpy())
 
             # Apply the sampled action in our environment
-            state_next, reward, _, game_over = env.step(action)
+            state_next, reward, terminal, game_over = env.step(action)
             state_next = np.array(state_next)
 
             episode_reward += reward
@@ -587,21 +595,21 @@ def train_network(env):
             action_history.append(action)
             state_history.append(state)
             state_next_history.append(state_next)
-            done_history.append(game_over)
+            done_history.append(terminal or game_over)
             rewards_history.append(reward)
             state = state_next
 
             action_counts[action] += 1
             if reward > 1.0:
               reward_stats["bounce"] += 1
-            elif reward < -0.9:
+            elif game_over:
               reward_stats["game_over"] += 1
-            elif reward == 0.0:
-              reward_stats["neutral"] += 1
+            elif terminal:
+                reward_stats["lost_life"] += 1
             elif reward > 0:
               reward_stats["shaping"] += 1
             else:
-              reward_stats["lost_life"] += 1
+              reward_stats["neutral"] += 1
 
             # Update every fourth frame and once batch size is over 32
             if (
@@ -677,7 +685,7 @@ def train_network(env):
 
                 _emit_csv_row("tick")
 
-            if frame_count % update_target_network == 0:
+            if int(optimizer.iterations.numpy()) - last_target_sync_updates >= update_target_network:
                 # update the target network *after* logging so probe_gap reflects pre-sync drift
                 model_target.set_weights(model.get_weights())
                 last_target_sync_updates = int(optimizer.iterations.numpy())
