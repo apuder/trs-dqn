@@ -301,7 +301,7 @@ def train_network(env):
     seed = 42
     gamma = 0.95
     epsilon = 1.0
-    epsilon_min = 0.05
+    epsilon_min = 0.10
     epsilon_max = 1.0
     epsilon_interval = epsilon_max - epsilon_min
     batch_size = 64
@@ -339,7 +339,7 @@ def train_network(env):
     # Train the model after n actions
     update_after_actions = 1
     # How often to update the target network
-    update_target_network = 2_000
+    update_target_network = 10_000
     # Using huber loss for stability
     loss_function = keras.losses.Huber()
 
@@ -631,10 +631,18 @@ def train_network(env):
                 # Build the updated Q-values for the sampled future states
                 # Use the target model for stability
                 #perf.quick_start()
-                future_rewards = model_target.predict(state_next_sample)
+                #future_rewards = model_target.predict(state_next_sample)
                 #perf.quick_end("Predict")
                 # Q value = reward + discount factor * expected future reward
-                updated_q_values = rewards_sample + gamma * tf.reduce_max(future_rewards, axis=1) * (1 - done_sample)
+                #updated_q_values = rewards_sample + gamma * tf.reduce_max(future_rewards, axis=1) * (1 - done_sample)
+
+                # Double DQN update
+                q_next_online  = model.predict(state_next_sample, verbose=0)
+                a_star         = tf.argmax(q_next_online, axis=1)
+                q_next_target  = model_target.predict(state_next_sample, verbose=0)
+                idx            = tf.stack([tf.range(tf.shape(a_star)[0]), a_star], axis=1)
+                max_q_next     = tf.gather_nd(q_next_target, idx)
+                updated_q_values = rewards_sample + gamma * max_q_next * (1.0 - done_sample)
 
                 # Create a mask so we only calculate loss on the updated Q-values
                 masks = tf.one_hot(action_sample, len(config["actions"]))
