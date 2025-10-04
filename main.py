@@ -637,13 +637,15 @@ def train_network(env):
                 #updated_q_values = rewards_sample + gamma * tf.reduce_max(future_rewards, axis=1) * (1 - done_sample)
 
                 # Double DQN update
-                q_next_online  = model.predict(state_next_sample, verbose=0)
-                a_star         = tf.argmax(q_next_online, axis=1)
-                q_next_target  = model_target.predict(state_next_sample, verbose=0)
-                idx            = tf.stack([tf.range(tf.shape(a_star)[0]), a_star], axis=1)
-                max_q_next     = tf.gather_nd(q_next_target, idx)
-                updated_q_values = rewards_sample + gamma * max_q_next * (1.0 - done_sample)
-
+                q_next_online = model(state_next_sample, training=False)                 # shape (B, A)
+                a_star = tf.argmax(q_next_online, axis=1, output_type=tf.int32)          # shape (B,)
+                q_next_target = model_target(state_next_sample, training=False)          # shape (B, A)
+                max_q_next = tf.gather(q_next_target, a_star, axis=1, batch_dims=1)      # shape (B,)
+                max_q_next = tf.stop_gradient(max_q_next)
+                rewards_f = tf.cast(rewards_sample, tf.float32)
+                done_f    = tf.cast(done_sample, tf.float32)
+                updated_q_values = rewards_f + gamma * max_q_next * (1.0 - done_f)
+ 
                 # Create a mask so we only calculate loss on the updated Q-values
                 masks = tf.one_hot(action_sample, len(config["actions"]))
 
