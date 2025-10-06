@@ -156,7 +156,9 @@ class RewardBreakdown:
             new_ycount = self.ram.peek(0x5ea1)
             if new_ycount != self.ycount:
                 self.ycount = new_ycount
-                if new_ycount & 0x80: # Y count is negative, ball was reflected
+                # ypos is the Y position of the ball
+                ypos = self.ram.peek(0x5ea3)
+                if new_ycount & 0x80 and ypos >= 43: # Ball is at bottom of the scrren and Y count is negative, ball was reflected
                     #log.info('Ball reflected')
                     return (2.0, False, False)
                 return (0.0, False, False)
@@ -201,7 +203,7 @@ class Game:
         self.steps = self.config.get("step", None)
         self.breakpoints = self.config.get("breakpoints", None)
         self.actions = self.config["actions"]
-        self.action_repeat = 2  # Repeat the same action N times (DeepMind uses 4)
+        self.action_repeat = 1  # Repeat the same action N times (DeepMind uses 4)
         viewport = self.config["viewport"]
         self.screenshot = Screenshot(trs.ram, viewport)
         self.steps_survived = 0
@@ -299,7 +301,7 @@ def create_q_model():
 
 def train_network(env):
     seed = 42
-    gamma = 0.95
+    gamma = 0.92
     epsilon = 1.0
     epsilon_min = 0.10
     epsilon_max = 1.0
@@ -335,7 +337,7 @@ def train_network(env):
     epsilon_greedy_frames = 350_000
     # Maximum replay length
     # Note: The Deepmind paper suggests 1000000 however this causes memory issues
-    max_memory_length = 40_000
+    max_memory_length = 200_000
     # Train the model after n actions
     update_after_actions = 1
     # How often to update the target network
