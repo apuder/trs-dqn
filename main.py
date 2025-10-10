@@ -203,7 +203,6 @@ class Game:
         self.steps = self.config.get("step", None)
         self.breakpoints = self.config.get("breakpoints", None)
         self.actions = self.config["actions"]
-        self.action_repeat = 1  # Repeat the same action N times (DeepMind uses 4)
         viewport = self.config["viewport"]
         self.screenshot = Screenshot(trs.ram, viewport)
         self.steps_survived = 0
@@ -230,39 +229,34 @@ class Game:
         game_over = False
         last_screenshot = None
 
-        for _ in range(self.action_repeat):
+        self.trs.keyboard.all_keys_up()
+        keys = self.actions[action]
+        if keys:
+            for key in keys:
+                self.trs.keyboard.key_down(key)
+        if self.steps is not None:
+            tstates = self.steps - self.delta_tstates
+            self.delta_tstates = self.trs.run_for_tstates(tstates)
+        else:
+            pc = self.trs.resume()
+        #print(f"running reward: {running_reward:.2f} at episode {episode_count}, frame count {frame_count}")
+
+        reward, term, over = self.reward.compute(pc)
+        if term:
+            self.trs.keyboard.key_down(Key.ENTER)
+            self.trs.resume()
             self.trs.keyboard.all_keys_up()
-            keys = self.actions[action]
-            if keys:
-                for key in keys:
-                    self.trs.keyboard.key_down(key)
-            if self.steps is not None:
-              tstates = self.steps - self.delta_tstates
-              self.delta_tstates = self.trs.run_for_tstates(tstates)
-            else:
-              pc = self.trs.resume()
-            #print(f"running reward: {running_reward:.2f} at episode {episode_count}, frame count {frame_count}")
 
-            reward, term, over = self.reward.compute(pc)
-            if term:
-                self.trs.keyboard.key_down(Key.ENTER)
-                self.trs.resume()
-                self.trs.keyboard.all_keys_up()
+        #if not term and not over:
+        #    self.steps_survived += 1
+        #    reward += min(0.05 * self.steps_survived, 0.5)
 
-            #if not term and not over:
-            #    self.steps_survived += 1
-            #    reward += min(0.05 * self.steps_survived, 0.5)
+        total_reward += reward
+        terminal = terminal or term
+        game_over = game_over or over
+        screenshot = self.screenshot.screenshot()
 
-            total_reward += reward
-            terminal = terminal or term
-            game_over = game_over or over
-
-            last_screenshot = self.screenshot.screenshot()
-
-            if game_over or terminal:
-                break
-
-        return (last_screenshot, total_reward, terminal, game_over)
+        return (screenshot, total_reward, terminal, game_over)
 
     def step(self, action):
         screenshot, reward, terminal, game_over = self.frame_step(action)
@@ -331,6 +325,8 @@ def train_network(env):
     running_reward = 0
     episode_count = 0
     frame_count = 0
+    action_repeat = 2  # Repeat the same action N times (DeepMind uses 4)
+    perlite_beta = 0.4
     # Number of frames to take random action and observe output
     epsilon_random_frames = 10_000
     # Number of frames for exploration
@@ -537,6 +533,7 @@ def train_network(env):
     while True:
         episode_reward = 0
         last_action = 0
+        hold_action = 0
 
         for timestep in range(1, max_steps_per_episode):
             # env.render(); Adding this line would show the attempts
@@ -544,10 +541,11 @@ def train_network(env):
             frame_count += 1
             #log.info("==> Frame #%d", frame_count)
 
-            if np.random.rand() < 0.25:
+            if hold_action > 0:
+              hold_action -= 1
               action = last_action
-              action_path["stick"] += 1
             else:
+              hold_action = action_repeat - 1
               # Use epsilon-greedy for exploration
               if frame_count < epsilon_random_frames or epsilon > np.random.rand(1)[0]:
                   # Take random action
@@ -620,8 +618,26 @@ def train_network(env):
                 and len(done_history) > batch_size
             ):
 
-                # Get indices of samples for replay buffers
-                indices = np.random.choice(range(len(done_history)), size=batch_size)
+                # Sample a batch with PER-lite (event-based)
+                N = len(done_history)
+                all_idx = np.arange(N, dtype=np.int32)
+                # Build positive (important) index set
+                pos_idx = np.flatnonzero([
+                    (done_history[i] or rewards_history[i] > 1.0)
+                    for i in range(N)
+                ])
+                k_pos = int(perlite_beta * batch_size)
+                k_uni = batch_size - k_pos
+                # Draw positives; if too few, fall back to uniform for the shortfall
+                if pos_idx.size >= k_pos and k_pos > 0:
+                    p = np.random.choice(pos_idx, size=k_pos, replace=False)
+                else:
+                    # Not enough positives yet: just sample uniformly
+                    p = np.random.choice(all_idx, size=k_pos, replace=(k_pos > N))
+                # Draw uniform remainder
+                u = np.random.choice(all_idx, size=k_uni, replace=(k_uni > N))
+                indices = np.concatenate([p, u])
+                np.random.shuffle(indices)
 
                 # Using list comprehension to sample from replay buffer
                 state_sample = np.array([state_history[i] for i in indices])
