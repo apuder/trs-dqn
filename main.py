@@ -325,17 +325,17 @@ def train_network(env):
     running_reward = 0
     episode_count = 0
     frame_count = 0
-    action_repeat = 2  # Repeat the same action N times (DeepMind uses 4)
+    #action_repeat = 2  # Repeat the same action N times (DeepMind uses 4)
     perlite_beta = 0.4
     # Number of frames to take random action and observe output
     epsilon_random_frames = 10_000
     # Number of frames for exploration
-    epsilon_greedy_frames = 350_000
+    epsilon_greedy_frames = 300_000
     # Maximum replay length
     # Note: The Deepmind paper suggests 1000000 however this causes memory issues
     max_memory_length = 200_000
     # Train the model after n actions
-    update_after_actions = 1
+    update_after_actions = 2_000
     # How often to update the target network
     update_target_network = 10_000
     # Using huber loss for stability
@@ -545,7 +545,14 @@ def train_network(env):
               hold_action -= 1
               action = last_action
             else:
-              hold_action = action_repeat - 1
+              # Adaptive action_repeat based on the current y-position of the ball
+              ball_y = env.trs.ram.peek(0x5ea3)
+              if ball_y < 16:        # ball far away
+                hold_action = 3
+              elif ball_y < 32:      # mid screen
+                hold_action = 2
+              else:                  # near paddle
+                hold_action = 1
               # Use epsilon-greedy for exploration
               if frame_count < epsilon_random_frames or epsilon > np.random.rand(1)[0]:
                   # Take random action
@@ -617,7 +624,6 @@ def train_network(env):
                 and frame_count % update_after_actions == 0
                 and len(done_history) > batch_size
             ):
-
                 # Sample a batch with PER-lite (event-based)
                 N = len(done_history)
                 all_idx = np.arange(N, dtype=np.int32)
