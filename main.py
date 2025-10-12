@@ -325,8 +325,7 @@ def train_network(env):
     running_reward = 0
     episode_count = 0
     frame_count = 0
-    #action_repeat = 2  # Repeat the same action N times (DeepMind uses 4)
-    perlite_beta = 0.4
+    perlite_beta = 0.5
     # Number of frames to take random action and observe output
     epsilon_random_frames = 10_000
     # Number of frames for exploration
@@ -335,7 +334,9 @@ def train_network(env):
     # Note: The Deepmind paper suggests 1000000 however this causes memory issues
     max_memory_length = 200_000
     # Train the model after n actions
-    update_after_actions = 2_000
+    update_after_actions = 1
+    # Start learning after n framesteps
+    learning_starts = 2000
     # How often to update the target network
     update_target_network = 10_000
     # Using huber loss for stability
@@ -620,7 +621,8 @@ def train_network(env):
 
             # Update every fourth frame and once batch size is over 32
             if (
-                frame_count > min_replay_history
+                frame_count > learning_starts
+                and frame_count > min_replay_history
                 and frame_count % update_after_actions == 0
                 and len(done_history) > batch_size
             ):
