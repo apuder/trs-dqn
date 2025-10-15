@@ -295,7 +295,7 @@ def create_q_model():
 
 def train_network(env):
     seed = 42
-    gamma = 0.92
+    gamma = 0.97
     epsilon = 1.0
     epsilon_min = 0.10
     epsilon_max = 1.0
@@ -327,7 +327,7 @@ def train_network(env):
     frame_count = 0
     perlite_beta = 0.5
     # Number of frames to take random action and observe output
-    epsilon_random_frames = 10_000
+    epsilon_random_frames = 50_000
     # Number of frames for exploration
     epsilon_greedy_frames = 300_000
     # Maximum replay length
