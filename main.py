@@ -162,7 +162,16 @@ class RewardBreakdown:
                     #log.info('Ball reflected')
                     return (2.0, False, False)
                 return (0.0, False, False)
-            return RewardBreakdown.default_reward
+            PADDLE_WIDTH = 9
+            paddle_center_x = self.ram.peek(0x5ea4) + PADDLE_WIDTH / 2
+            # Get ball's X-coordinate
+            ball_x = self.ram.peek(0x5ea2)
+            # Calculate horizontal distance
+            distance = abs(paddle_center_x - ball_x)
+            # Give a small reward for being close to the ball.
+            # The reward is higher when the distance is smaller.
+            shaping_reward = 0.1 * (1.0 - (distance / 128.0))
+            return (shaping_reward, False, False)
         if pc == 0x5d17:
             return (-1.0, False, True)  # Game Over
         # Breakpoints 0x5CA4, 0x5C57 indicate that the player lost a life
