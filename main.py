@@ -338,10 +338,10 @@ def train_network(env):
     # Number of frames to take random action and observe output
     epsilon_random_frames = 50_000
     # Number of frames for exploration
-    epsilon_greedy_frames = 300_000
+    epsilon_greedy_frames = 700_000
     # Maximum replay length
     # Note: The Deepmind paper suggests 1000000 however this causes memory issues
-    max_memory_length = 200_000
+    max_memory_length = 400_000
     # Train the model after n actions
     update_after_actions = 1
     # Start learning after n framesteps
