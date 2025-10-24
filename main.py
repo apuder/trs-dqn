@@ -304,7 +304,7 @@ def create_q_model():
 
 def train_network(env):
     seed = 42
-    gamma = 0.97
+    gamma = 0.99
     epsilon = 1.0
     epsilon_min = 0.10
     epsilon_max = 1.0
@@ -341,7 +341,7 @@ def train_network(env):
     epsilon_greedy_frames = 700_000
     # Maximum replay length
     # Note: The Deepmind paper suggests 1000000 however this causes memory issues
-    max_memory_length = 400_000
+    max_memory_length = 600_000
     # Train the model after n actions
     update_after_actions = 1
     # Start learning after n framesteps
@@ -373,7 +373,7 @@ def train_network(env):
             return {"initial_lr": float(self.initial_lr.numpy())}
 
 
-    initial_lr = 1e-4
+    initial_lr = 2.5e-5
     # Key the cosine cycle length to *updates*, not frames
     updates_per_frame = 1.0 / update_after_actions
     U_updates = max(0, (epsilon_greedy_frames - max(min_replay_history, epsilon_random_frames))) * updates_per_frame
