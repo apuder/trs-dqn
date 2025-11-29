@@ -139,6 +139,7 @@ class RewardBreakdown:
     def __init__(self, ram):
         self.ram = ram
         self.score = 0
+        self.frame_count = 0
 
     def reset(self):
         self.score = 0
@@ -146,6 +147,7 @@ class RewardBreakdown:
         self.ycount = 1
 
     def compute(self, pc):
+        self.frame_count += 1
         if pc == 0x52A4:
             new_score = self.ram.peek(0x6314) + 256 * self.ram.peek(0x6315)
             if new_score > self.score:
@@ -161,9 +163,6 @@ class RewardBreakdown:
                 if new_ycount & 0x80 and ypos >= 43: # Ball is at bottom of the scrren and Y count is negative, ball was reflected
                     #log.info('Ball reflected')
                     return (2.0, False, False)
-                return (0.0, False, False)
-            return (0.0, False, False)
-        """
             PADDLE_WIDTH = 9
             paddle_center_x = self.ram.peek(0x5ea4) + PADDLE_WIDTH / 2
             # Get ball's X-coordinate
@@ -172,9 +171,10 @@ class RewardBreakdown:
             distance = abs(paddle_center_x - ball_x)
             # Give a small reward for being close to the ball.
             # The reward is higher when the distance is smaller.
-            shaping_reward = 0.1 * (1.0 - (distance / 128.0))
-            return (shaping_reward, False, False)
-        """
+            raw_shaping = 0.1 * (1.0 - (distance / 128.0))
+            decay_duration = 2_000_000
+            decay_factor = max(0.0, 1.0 - (self.frame_count / decay_duration))
+            return (raw_shaping * decay_factor, False, False)
         if pc == 0x5d17:
             return (-1.0, False, True)  # Game Over
         # Breakpoints 0x5CA4, 0x5C57 indicate that the player lost a life
