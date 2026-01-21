@@ -165,14 +165,12 @@ class Game:
         self.action_repeat = 4  # Repeat the same action N times like DeepMind
         viewport = self.config["viewport"]
         self.screenshot = Screenshot(trs.ram, viewport)
-        self.steps_survived = 0
         self.reset()
 
     def reset(self):
         self.trs.boot()
         self.reward.reset()
         self.delta_tstates = 0
-        self.steps_survived = 0
 
         x_t, r_0, terminal, _ = self.frame_step(0)
         x_t = skimage.transform.resize(x_t, (84, 84))
@@ -195,9 +193,6 @@ class Game:
             self.delta_tstates = self.trs.run_for_tstates(tstates)
             reward, term, over = self.reward.compute()
 
-            self.steps_survived += 1
-            reward += 0.001 * self.steps_survived
-
             total_reward += reward
             terminal = terminal or term
             game_over = game_over or over
@@ -216,7 +211,8 @@ class Game:
         x_t1 = x_t1.reshape(x_t1.shape[0], x_t1.shape[1], 1)
         self.state = np.append(x_t1, self.state[:, :, :3], axis=2)
 
-        return self.state, reward, terminal or game_over, None
+        # Only end episode on game_over (all lives lost), not on terminal (single life lost)
+        return self.state, reward, game_over, None
 # ------------------------------------------------------------------------------------
 # The following is adopted from https://keras.io/examples/rl/deep_q_network_breakout/
 # ------------------------------------------------------------------------------------
@@ -308,9 +304,10 @@ def train_network(env):
                 action = tf.argmax(action_probs[0]).numpy()
                 perf.quick_end("Predict action Q-values")
 
-            # Decay probability of taking random action
-            epsilon -= epsilon_interval / epsilon_greedy_frames
-            epsilon = max(epsilon, epsilon_min)
+            # Decay probability of taking random action (only after warmup period)
+            if frame_count > epsilon_random_frames:
+                epsilon -= epsilon_interval / epsilon_greedy_frames
+                epsilon = max(epsilon, epsilon_min)
 
             # Apply the sampled action in our environment
             state_next, reward, done, _ = env.step(action)
